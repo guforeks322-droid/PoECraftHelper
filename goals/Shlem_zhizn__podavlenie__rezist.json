@@ -1,0 +1,32 @@
+{
+ "v": 1,
+ "name": "Шлем: жизнь + подавление + резист",
+ "author": "PoE Craft Helper",
+ "description": "Лучший способ по ценам лиги Allflame: Спам: Shrieking Essence of Wrath — в среднем ~41c (≈0.1 div)",
+ "base_class": "Helmet",
+ "base": "Lion Pelt",
+ "min_ilvl": 84,
+ "wanted": [
+  {
+   "label": "Жизнь",
+   "mod_type": "IncreasedLife",
+   "kind": "prefix",
+   "pattern": "",
+   "max_tier": 3
+  },
+  {
+   "label": "Подавление чар",
+   "mod_type": "ChanceToSuppressSpells",
+   "kind": "suffix",
+   "pattern": "",
+   "max_tier": 2
+  },
+  {
+   "label": "Молния",
+   "mod_type": "LightningResistance",
+   "kind": "suffix",
+   "pattern": "",
+   "max_tier": 3
+  }
+ ]
+}

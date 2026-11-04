@@ -1,0 +1,66 @@
+name: build
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Зависимости
+        run: pip install -r requirements-dev.txt
+
+      - name: Данные модов (RePoE, вкл. русские)
+        run: python -c "from poecraft.data import download; print(download())"
+
+      - name: Тесты
+        run: python -m pytest -q
+
+      - name: Сборка exe
+        run: >
+          pyinstaller --onefile --windowed --name PoECraftHelper
+          --hidden-import editor --hidden-import mainwin
+          --add-data "poecraft/ui;poecraft/ui" -y overlay.py
+
+      - name: Проверка запуска exe (импорт и данные)
+        shell: pwsh
+        run: |
+          $p = Start-Process dist/PoECraftHelper.exe -PassThru
+          Start-Sleep -Seconds 15
+          if ($p.HasExited) { throw "exe завершился сразу после запуска (код $($p.ExitCode))" }
+          Stop-Process -Id $p.Id -Force
+
+      - name: Архив релиза
+        shell: pwsh
+        run: |
+          $r = "release/PoECraftHelper"
+          New-Item -ItemType Directory -Force -Path "$r/data/ru" | Out-Null
+          Copy-Item dist/PoECraftHelper.exe $r/
+          Copy-Item data/*.json, data/version.txt "$r/data/"
+          Copy-Item data/ru/*.json "$r/data/ru/"
+          Copy-Item -Recurse goals, examples $r/
+          Copy-Item "docs/Как пользоваться.txt" $r/
+          Compress-Archive -Path $r -DestinationPath "PoECraftHelper-${{ github.ref_name }}-win64.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PoECraftHelper-win64
+          path: PoECraftHelper-*-win64.zip
+
+      - name: Релиз
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: PoECraftHelper-*-win64.zip
+          generate_release_notes: true

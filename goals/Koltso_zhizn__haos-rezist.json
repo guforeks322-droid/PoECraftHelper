@@ -1,0 +1,25 @@
+{
+ "v": 1,
+ "name": "Кольцо: жизнь + хаос-резист",
+ "author": "PoE Craft Helper",
+ "description": "Лучший способ по ценам лиги Allflame: Alteration + Augmentation — в среднем ~401c (≈1.0 div)",
+ "base_class": "Ring",
+ "base": "Two-Stone Ring",
+ "min_ilvl": 84,
+ "wanted": [
+  {
+   "label": "Жизнь",
+   "mod_type": "IncreasedLife",
+   "kind": "prefix",
+   "pattern": "",
+   "max_tier": 3
+  },
+  {
+   "label": "Хаос-резист",
+   "mod_type": "ChaosResistance",
+   "kind": "suffix",
+   "pattern": "",
+   "max_tier": 2
+  }
+ ]
+}

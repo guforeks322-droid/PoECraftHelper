@@ -1,0 +1,25 @@
+{
+ "v": 1,
+ "name": "Амулет кастера: +1 ко всем камням + урон чарами",
+ "author": "PoE Craft Helper",
+ "description": "Лучший способ по ценам лиги Allflame: Harvest: Reforge Caster — в среднем ~9 732c (≈23.8 div)",
+ "base_class": "Amulet",
+ "base": "Onyx Amulet",
+ "min_ilvl": 84,
+ "wanted": [
+  {
+   "label": "+1 ко всем камням",
+   "mod_type": "GlobalSkillGemLevel",
+   "kind": "prefix",
+   "pattern": "",
+   "max_tier": 1
+  },
+  {
+   "label": "Урон чарами",
+   "mod_type": "SpellDamage",
+   "kind": "prefix",
+   "pattern": "",
+   "max_tier": 2
+  }
+ ]
+}

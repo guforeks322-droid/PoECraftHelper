@@ -1,0 +1,32 @@
+{
+ "v": 1,
+ "name": "Перчатки: жизнь + скорость атаки + резист",
+ "author": "PoE Craft Helper",
+ "description": "Лучший способ по ценам лиги Allflame: Спам: Shrieking Essence of Zeal — в среднем ~334c (≈0.8 div)",
+ "base_class": "Gloves",
+ "base": "Fingerless Silk Gloves",
+ "min_ilvl": 84,
+ "wanted": [
+  {
+   "label": "Жизнь",
+   "mod_type": "IncreasedLife",
+   "kind": "prefix",
+   "pattern": "",
+   "max_tier": 3
+  },
+  {
+   "label": "Скорость атаки",
+   "mod_type": "IncreasedAttackSpeed",
+   "kind": "suffix",
+   "pattern": "",
+   "max_tier": 2
+  },
+  {
+   "label": "Огонь",
+   "mod_type": "FireResistance",
+   "kind": "suffix",
+   "pattern": "",
+   "max_tier": 3
+  }
+ ]
+}

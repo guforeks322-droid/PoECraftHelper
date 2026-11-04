@@ -1,0 +1,32 @@
+{
+ "v": 1,
+ "name": "Лук: %физ + плоский физ + скорость атаки",
+ "author": "PoE Craft Helper",
+ "description": "Лучший способ по ценам лиги Allflame: Спам: Shrieking Essence of Zeal — в среднем ~11 250c (≈27.5 div)",
+ "base_class": "Bow",
+ "base": "Thicket Bow",
+ "min_ilvl": 84,
+ "wanted": [
+  {
+   "label": "%Физ. урон",
+   "mod_type": "LocalPhysicalDamagePercent",
+   "kind": "prefix",
+   "pattern": "",
+   "max_tier": 2
+  },
+  {
+   "label": "Плоский физ.",
+   "mod_type": "LocalPhysicalDamageTwoHanded",
+   "kind": "prefix",
+   "pattern": "",
+   "max_tier": 3
+  },
+  {
+   "label": "Скорость атаки",
+   "mod_type": "LocalIncreasedAttackSpeed",
+   "kind": "suffix",
+   "pattern": "",
+   "max_tier": 2
+  }
+ ]
+}

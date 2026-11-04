@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>PoE Craft Helper</title>
+<style>
+:root{--bg:#0f0d0a;--bg1:#16130f;--bg2:#1f1a14;--line:#3a3127;--fg:#d9d0c1;--muted:#8a7f70;--gold:#e3b55b;--good:#7ec27a;--warn:#e07a5f;--blue:#8fb3e0}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 "Segoe UI",system-ui,sans-serif}
+header{display:flex;align-items:center;gap:18px;padding:10px 18px;background:var(--bg2);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.brand{color:var(--gold);font-weight:600;font-size:16px}
+nav{display:flex;gap:4px}
+nav button{background:none;border:1px solid transparent;color:var(--muted);padding:6px 14px;border-radius:6px;cursor:pointer;font:inherit}
+nav button.on{color:var(--gold);border-color:var(--line);background:var(--bg1)}
+nav button:disabled{opacity:.45;cursor:default}
+.right{margin-left:auto;color:var(--muted);font-size:12px;display:flex;gap:10px;align-items:center}
+main{padding:16px 18px;max-width:1400px;margin:0 auto}
+.controls{display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-bottom:14px}
+label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
+input,select,textarea{background:var(--bg2);border:1px solid var(--line);color:var(--fg);border-radius:6px;padding:7px 9px;font:inherit}
+input:focus,select:focus,textarea:focus{outline:1px solid var(--gold)}
+button.act{background:#3a2c17;border:1px solid #6b5124;color:var(--gold);padding:8px 16px;border-radius:6px;cursor:pointer;font:inherit}
+button.act:hover{background:#4a381c}
+button.lite{background:none;border:1px solid var(--line);color:var(--fg);padding:6px 10px;border-radius:6px;cursor:pointer;font:inherit;font-size:12px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.col h3{margin:0 0 8px;font-size:13px;font-weight:600;color:var(--gold);display:flex;justify-content:space-between}
+.col h3 span{color:var(--muted);font-weight:400}
+.grp{background:var(--bg1);border:1px solid var(--line);border-radius:8px;margin-bottom:6px}
+.grp.sel{border-color:#6b5124;background:#1d1710}
+.row{display:grid;grid-template-columns:22px 1fr 62px 62px 84px 18px;gap:8px;align-items:center;padding:7px 10px;cursor:pointer}
+.row .txt{overflow:hidden}
+.row .tags{color:var(--muted);font-size:11px}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.pct{color:var(--blue)}
+.row select{padding:3px 4px;font-size:12px}
+.tiers{display:none;border-top:1px solid var(--line);padding:6px 10px 8px 40px}
+.grp.open .tiers{display:block}
+.tiers table{width:100%;border-collapse:collapse;font-size:12px}
+.tiers td{padding:2px 6px;border-bottom:1px solid #241e17}
+.tiers tr.na td{color:#5a5248}
+.muted{color:var(--muted)}
+.hint{color:var(--muted);font-size:12px;margin:6px 0 12px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 14px}
+.chip{background:var(--bg2);border:1px solid #6b5124;border-radius:16px;padding:4px 10px;font-size:12px}
+.chip b{color:var(--gold);font-weight:600}
+.chip button{background:none;border:none;color:var(--warn);cursor:pointer;margin-left:4px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
+.card{background:var(--bg1);border:1px solid var(--line);border-radius:10px;padding:14px}
+.card.best{border-color:var(--good)}
+.card h4{margin:0 0 4px;color:var(--gold);font-size:15px}
+.badge{font-size:11px;color:var(--good);border:1px solid var(--good);border-radius:10px;padding:1px 7px;margin-left:6px}
+.big{font-size:22px;color:var(--fg);font-weight:600}
+.card ul{margin:8px 0 0;padding-left:18px;font-size:12px;color:var(--muted)}
+.err{color:var(--warn)}
+.save{margin-top:18px;background:var(--bg1);border:1px solid var(--line);border-radius:10px;padding:14px;display:grid;gap:8px;max-width:760px}
+code{background:var(--bg2);padding:6px 8px;border-radius:6px;display:block;word-break:break-all;font-size:12px;color:var(--good)}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid var(--line);border-top-color:var(--gold);border-radius:50%;animation:s 0.8s linear infinite;vertical-align:-2px}
+@keyframes s{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">⚒ PoE Craft Helper</div>
+  <nav>
+    <button data-tab="pool" class="on">Пул модов</button>
+    <button data-tab="calc">Калькулятор</button>
+    <button disabled title="Следующий этап">Эмулятор</button>
+    <button disabled title="Следующий этап">Эссенции и фоссилы</button>
+  </nav>
+  <div class="right"><span id="priceInfo">цены…</span><button class="lite" id="refreshPrices">обновить цены</button></div>
+</header>
+<main>
+  <div class="controls">
+    <label>База предмета
+      <input id="base" list="baseList" placeholder="например, Leather Belt" style="width:280px" autocomplete="off">
+      <datalist id="baseList"></datalist>
+    </label>
+    <label>ilvl <input id="ilvl" type="number" min="1" max="100" value="84" style="width:80px"></label>
+    <button class="act" id="load">Показать моды</button>
+    <span id="baseInfo" class="muted"></span>
+  </div>
+
+  <section id="tab-pool">
+    <div class="controls">
+      <label>Поиск по модам <input id="filter" placeholder="life, resist, crit…" style="width:260px"></label>
+      <span class="hint">Отметь галочкой нужные моды и выбери худший допустимый тир — потом открой «Калькулятор».</span>
+    </div>
+    <div id="poolEmpty" class="muted">Выбери базу и нажми «Показать моды».</div>
+    <div class="cols" id="cols" style="display:none">
+      <div class="col"><h3>Префиксы <span id="pw"></span></h3><div id="prefixes"></div></div>
+      <div class="col"><h3>Суффиксы <span id="sw"></span></h3><div id="suffixes"></div></div>
+    </div>
+  </section>
+
+  <section id="tab-calc" style="display:none">
+    <div class="muted">Нужные моды:</div>
+    <div class="chips" id="chips"></div>
+    <button class="act" id="calcBtn">Посчитать</button>
+    <span id="calcStatus" class="muted" style="margin-left:10px"></span>
+    <p class="hint">Шансы считаются по весам модов из файлов игры. Alt, Aug и Regal — точный расчёт; Chaos — симуляция,
+      погрешность указана в карточке. Цены валюты — poe.ninja, обновляются раз в час.</p>
+    <div class="cards" id="results"></div>
+
+    <div class="save">
+      <b style="color:var(--gold)">Сохранить как крафт для оверлея</b>
+      <input id="goalName" placeholder="Название, например «Пояс: жизнь + 2 резиста»">
+      <input id="goalAuthor" placeholder="Автор (необязательно)">
+      <div><button class="act" id="saveGoal">Сохранить и получить код</button> <span id="saveStatus" class="muted"></span></div>
+      <div id="codeBox" style="display:none"><div class="muted" style="font-size:12px">Код для обмена — вставь его в оверлей через «импорт»:</div><code id="code"></code>
+        <button class="lite" id="copyCode">скопировать</button></div>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const state = {pool:null, selected:new Map(), bases:[]};
+const fmt = (n, d=1) => n==null ? '—' : n.toLocaleString('ru-RU',{maximumFractionDigits:d});
+const pct = x => (x*100).toLocaleString('ru-RU',{maximumFractionDigits: x<0.01?2:1})+'%';
+const label = t => t.replace(/\(([\d.]+)-([\d.]+)\)/g,'#').replace(/\n/g,' / ');
+const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function api(path, body){
+  const r = await fetch(path, body ? {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)} : {});
+  const j = await r.json();
+  if(!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+
+document.querySelectorAll('nav button[data-tab]').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x===b));
+  $('#tab-pool').style.display = b.dataset.tab==='pool' ? '' : 'none';
+  $('#tab-calc').style.display = b.dataset.tab==='calc' ? '' : 'none';
+  if(b.dataset.tab==='calc') renderChips();
+});
+
+async function loadPrices(refresh){
+  try{
+    const p = await api('/api/prices'+(refresh?'?refresh=1':''));
+    $('#priceInfo').textContent = `${p.league} · 1 div = ${fmt(p.divine,0)}c · ${p.source}`;
+  }catch(e){ $('#priceInfo').textContent = 'цены недоступны'; }
+}
+$('#refreshPrices').onclick = () => { $('#priceInfo').textContent='обновляю…'; loadPrices(true); };
+
+async function init(){
+  const b = await api('/api/bases');
+  state.bases = b.bases;
+  $('#baseList').innerHTML = b.bases.map(x => `<option value="${esc(x.name)}">${esc(x.cls_ru)}</option>`).join('');
+  const last = localStorageGet('base'); if(last){ $('#base').value = last; loadPool(); }
+  loadPrices(false);
+}
+function localStorageGet(k){ try{return localStorage.getItem('pch_'+k)}catch(e){return null} }
+function localStorageSet(k,v){ try{localStorage.setItem('pch_'+k,v)}catch(e){} }
+
+async function loadPool(){
+  const base = $('#base').value.trim(), ilvl = +$('#ilvl').value || 84;
+  if(!base) return;
+  $('#baseInfo').innerHTML = '<span class="spin"></span>';
+  try{
+    const p = await api(`/api/pool?base=${encodeURIComponent(base)}&ilvl=${ilvl}`);
+    if(!state.pool || state.pool.base !== p.base) state.selected.clear();
+    state.pool = p; localStorageSet('base', base);
+    const cls = state.bases.find(x=>x.name===base);
+    $('#baseInfo').textContent = `${cls?cls.cls_ru:p.cls} · теги: ${p.tags.join(', ')}`;
+    $('#pw').textContent = `общий вес ${fmt(p.prefix_weight,0)}`;
+    $('#sw').textContent = `общий вес ${fmt(p.suffix_weight,0)}`;
+    renderPool();
+  }catch(e){ $('#baseInfo').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+}
+$('#load').onclick = loadPool;
+$('#base').addEventListener('change', loadPool);
+$('#ilvl').addEventListener('change', loadPool);
+$('#filter').addEventListener('input', renderPool);
+
+function renderPool(){
+  const p = state.pool; if(!p) return;
+  $('#poolEmpty').style.display='none'; $('#cols').style.display='';
+  const f = $('#filter').value.toLowerCase();
+  for(const kind of ['prefix','suffix']){
+    const el = $(kind==='prefix' ? '#prefixes' : '#suffixes');
+    const groups = p.groups.filter(g => g.kind===kind && (!f || g.text.toLowerCase().includes(f) || g.type.toLowerCase().includes(f) || g.tags.join(' ').includes(f)));
+    el.innerHTML = groups.map(g => {
+      const key = g.kind+'|'+g.type, sel = state.selected.get(key);
+      const avail = g.tiers.filter(t=>t.available);
+      const opts = avail.map(t => `<option value="${t.tier}" ${sel && sel.max_tier==t.tier?'selected':''}>до T${t.tier}</option>`).join('');
+      const rows = g.tiers.map(t => `<tr class="${t.available?'':'na'}"><td>T${t.tier}</td><td>${esc(t.name)}</td><td>ilvl ${t.level}</td><td>${esc(t.text.replace(/\n/g,' / '))}</td><td class="num">${fmt(t.weight,0)}</td></tr>`).join('');
+      return `<div class="grp ${sel?'sel':''}" data-key="${esc(key)}">
+        <div class="row">
+          <input type="checkbox" ${sel?'checked':''} title="нужен">
+          <div class="txt">${esc(label(g.text))}<div class="tags">${esc(g.tags.join(', '))} · тиров: ${avail.length}</div></div>
+          <div class="num pct" title="Шанс среди всех модов (Exalt на пустой редкий)">${pct(g.chance_all)}</div>
+          <div class="num" title="Шанс среди ${kind==='prefix'?'префиксов':'суффиксов'}">${pct(g.chance_kind)}</div>
+          <select title="Худший допустимый тир">${opts}</select>
+          <div class="muted">▸</div>
+        </div>
+        <div class="tiers"><table>${rows}</table></div></div>`;
+    }).join('') || '<div class="muted">ничего не найдено</div>';
+  }
+  document.querySelectorAll('.grp').forEach(el => {
+    const key = el.dataset.key, g = p.groups.find(x => x.kind+'|'+x.type===key);
+    const cb = el.querySelector('input'), sel = el.querySelector('select');
+    if(!state.selected.has(key)) sel.value = Math.min(3, Math.max(...g.tiers.filter(t=>t.available).map(t=>t.tier)));
+    const update = () => {
+      if(cb.checked) state.selected.set(key, {kind:g.kind, type:g.type, max_tier:+sel.value, label:label(g.text)});
+      else state.selected.delete(key);
+      el.classList.toggle('sel', cb.checked);
+    };
+    cb.onclick = e => { e.stopPropagation(); update(); };
+    sel.onclick = e => e.stopPropagation();
+    sel.onchange = () => { if(cb.checked) update(); };
+    el.querySelector('.row').onclick = () => el.classList.toggle('open');
+  });
+}
+
+function renderChips(){
+  const arr = [...state.selected.entries()];
+  $('#chips').innerHTML = arr.length ? arr.map(([k,t]) =>
+    `<span class="chip">${t.kind==='prefix'?'П':'С'} · ${esc(t.label)} <b>до T${t.max_tier}</b><button data-k="${esc(k)}">✕</button></span>`).join('')
+    : '<span class="muted">Ничего не выбрано — отметь моды во вкладке «Пул модов».</span>';
+  document.querySelectorAll('.chip button').forEach(b => b.onclick = () => { state.selected.delete(b.dataset.k); renderChips(); renderPool(); });
+}
+
+$('#calcBtn').onclick = async () => {
+  if(!state.pool) return;
+  const targets = [...state.selected.values()];
+  $('#calcStatus').innerHTML = '<span class="spin"></span> считаю…';
+  $('#results').innerHTML = '';
+  try{
+    const r = await api('/api/calc', {base:state.pool.base, ilvl:state.pool.ilvl, targets});
+    const best = r.results.find(x => x.cost_chaos!=null);
+    $('#results').innerHTML = r.results.map(x => {
+      const isBest = x===best;
+      const use = Object.entries(x.use).filter(([,v])=>v>0.05).map(([k,v]) => `<li>${esc(k)}: ~${fmt(v, v<10?1:0)}</li>`).join('');
+      return `<div class="card ${isBest?'best':''}">
+        <h4>${esc(x.name)}${isBest?'<span class="badge">дешевле всего</span>':''}</h4>
+        <div class="muted" style="font-size:12px">${esc(x.how)}</div>
+        <div style="margin-top:10px" class="big">${x.cost_chaos==null ? '<span class="err">не выйдет</span>' : fmt(x.cost_chaos,0)+'c'}
+          <span class="muted" style="font-size:13px;font-weight:400">${x.cost_div!=null?'≈ '+fmt(x.cost_div,2)+' div':''}</span></div>
+        <div>${x.chance_label ? esc(x.chance_label) : 'Шанс за попытку: '+pct(x.chance)+(x.attempts?' · в среднем ~'+fmt(x.attempts,0)+' попыток':'')}</div>
+        ${use?'<ul>'+use+'</ul>':''}</div>`;
+    }).join('') || '<div class="muted">Для такого набора модов пока нет подходящих методов.</div>';
+    $('#calcStatus').textContent = `цены: ${r.prices.league}, ${r.prices.source}`;
+  }catch(e){ $('#calcStatus').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+};
+
+$('#saveGoal').onclick = async () => {
+  const name = $('#goalName').value.trim();
+  if(!state.pool){ $('#saveStatus').innerHTML='<span class="err">Сначала выбери базу.</span>'; return; }
+  if(!name){ $('#saveStatus').innerHTML='<span class="err">Введи название.</span>'; return; }
+  if(!state.selected.size){ $('#saveStatus').innerHTML='<span class="err">Отметь нужные моды.</span>'; return; }
+  try{
+    const r = await api('/api/save_goal', {name, author:$('#goalAuthor').value.trim(), base:state.pool.base, ilvl:state.pool.ilvl, targets:[...state.selected.values()]});
+    $('#saveStatus').textContent = `Сохранено: goals/${r.saved}. В оверлее нажми ↻ или выбери крафт в списке.`;
+    $('#code').textContent = r.code; $('#codeBox').style.display='';
+  }catch(e){ $('#saveStatus').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+};
+$('#goalName').addEventListener('input', () => $('#saveStatus').textContent='');
+$('#copyCode').onclick = () => navigator.clipboard.writeText($('#code').textContent).then(()=>{$('#copyCode').textContent='скопировано'});
+
+init();
+</script>
+</body>
+</html>

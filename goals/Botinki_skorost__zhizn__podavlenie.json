@@ -1,0 +1,32 @@
+{
+ "v": 1,
+ "name": "Ботинки: скорость + жизнь + подавление",
+ "author": "PoE Craft Helper",
+ "description": "Лучший способ по ценам лиги Allflame: Спам: Shrieking Essence of Zeal — в среднем ~926c (≈2.3 div)",
+ "base_class": "Boots",
+ "base": "Two-Toned Boots",
+ "min_ilvl": 84,
+ "wanted": [
+  {
+   "label": "Скорость передвижения",
+   "mod_type": "MovementVelocity",
+   "kind": "prefix",
+   "pattern": "",
+   "max_tier": 2
+  },
+  {
+   "label": "Жизнь",
+   "mod_type": "IncreasedLife",
+   "kind": "prefix",
+   "pattern": "",
+   "max_tier": 3
+  },
+  {
+   "label": "Подавление чар",
+   "mod_type": "ChanceToSuppressSpells",
+   "kind": "suffix",
+   "pattern": "",
+   "max_tier": 2
+  }
+ ]
+}

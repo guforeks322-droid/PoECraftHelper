@@ -1,0 +1,9 @@
+{
+  "name": "Пояс: жизнь T1-T3 + огонь и холод T1-T3",
+  "base_class": "Belt",
+  "wanted": [
+    {"label": "Жизнь",          "pattern": "to maximum Life$",   "max_tier": 3},
+    {"label": "Резист к огню",  "pattern": "to Fire Resistance$", "max_tier": 3},
+    {"label": "Резист к холоду","pattern": "to Cold Resistance$", "max_tier": 3}
+  ]
+}

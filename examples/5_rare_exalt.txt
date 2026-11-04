@@ -1,0 +1,13 @@
+Item Class: Belts
+Rarity: Rare
+Storm Cord
+Leather Belt
+--------
+Item Level: 84
+--------
+{ Prefix Modifier "Fecund" (Tier: 1) — Life }
++140(130-144) to maximum Life
+{ Prefix Modifier "Lacquered" (Tier: 8) — Defences, Armour }
++7(3-10) to Armour
+{ Suffix Modifier "of the Brute" (Tier: 10) — Attribute }
++10(8-12) to Strength
