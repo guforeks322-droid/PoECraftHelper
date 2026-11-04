@@ -188,6 +188,7 @@ class MainWindow(tk.Toplevel):
         self._btn(head, "✕", self.hide, WARN).pack(side="right", padx=(0, 6))
         self._btn(head, "—", self.minimize).pack(side="right")
         self._btn(head, "◐", self.cycle_alpha).pack(side="right")
+        self._btn(head, "⚙", lambda: getattr(self, "app", None) and self.app.open_settings()).pack(side="right")
         self.price_lbl = tk.Label(head, text="цены…", bg=BG2, fg=MUTED, font=(FONT, 8))
         self.price_lbl.pack(side="right", padx=8)
 
@@ -230,15 +231,13 @@ class MainWindow(tk.Toplevel):
         self.nb.add(self.tab_emu, text="Эмулятор")
         self.tab_sock = tk.Frame(self.nb, bg=BG)
         self.nb.add(self.tab_sock, text="Сокеты")
-        self.tab_settings = tk.Frame(self.nb, bg=BG)
-        self.nb.add(self.tab_settings, text="Настройки")
+
         self.nb.bind("<<NotebookTabChanged>>", lambda e: self._render_targets())
         self._build_pool()
         self._build_calc()
         self._build_ef()
         self._build_emu()
         self._build_sockets()
-        self._build_settings()
         i18n.translate_tree(self)
 
         foot = tk.Frame(self, bg=BG)
@@ -881,199 +880,6 @@ class MainWindow(tk.Toplevel):
         o.insert("end", text, tag)
         o.configure(state="disabled")
 
-    # ------------------------------------------------------------ настройки
-    def _section(self, parent, title):
-        tk.Label(parent, text=title, bg=BG, fg=GOLD, font=(FONT, 11, "bold"), anchor="w").pack(fill="x", pady=(14, 4))
-        fr = tk.Frame(parent, bg=BG)
-        fr.pack(fill="x", padx=6)
-        return fr
-
-    def _build_settings(self):
-        f = tk.Frame(self.tab_settings, bg=BG)
-        f.pack(fill="both", expand=True, padx=14, pady=4)
-        self.app = getattr(self, "app", None)
-
-        # --- горячие клавиши
-        hk = self._section(f, "Горячие клавиши")
-        cur = dict(hkmod.DEFAULT_HOTKEYS)
-        cur.update(self.settings.get("hotkeys", {}))
-        self.hk_vars = {}
-        for row, (key, label) in enumerate((("overlay", "Показать / спрятать оверлей"),
-                                            ("workshop", "Показать / спрятать мастерскую"))):
-            tk.Label(hk, text=label, bg=BG, fg=FG, font=(FONT, 10), anchor="w", width=34).grid(row=row, column=0, sticky="w", pady=3)
-            v = tk.StringVar(value=cur.get(key, ""))
-            e = tk.Entry(hk, textvariable=v, width=20, bg=BG2, fg=GOLD, insertbackground=FG, relief="flat",
-                         highlightthickness=1, highlightbackground=LINE, highlightcolor=GOLD, font=(FONT, 10),
-                         justify="center")
-            e.grid(row=row, column=1, padx=6)
-            e.bind("<FocusIn>", lambda ev, vv=v: vv.set("нажми сочетание…"))
-            e.bind("<KeyPress>", lambda ev, vv=v, k=key: self._capture_hotkey(ev, vv, k))
-            e.bind("<FocusOut>", lambda ev, vv=v, k=key: vv.get() == "нажми сочетание…" and vv.set(cur.get(k, "")))
-            self._btn(hk, "очистить", lambda vv=v: vv.set("")).grid(row=row, column=2)
-            self.hk_vars[key] = v
-        r2 = tk.Frame(f, bg=BG)
-        r2.pack(fill="x", padx=6, pady=(4, 0))
-        self._act(r2, "Применить", self.apply_hotkey_settings).pack(side="left")
-        self.hk_status = tk.Label(r2, text="Кликни в поле и нажми сочетание (например Ctrl+Shift+O)."
-                                  if hkmod.HotkeyManager(None).supported else
-                                  "Глобальные горячие клавиши работают только в Windows.",
-                                  bg=BG, fg=MUTED, font=(FONT, 9))
-        self.hk_status.pack(side="left", padx=10)
-
-        # --- язык
-        lg = self._section(f, "Язык")
-        tk.Label(lg, text="Интерфейс:", bg=BG, fg=FG, font=(FONT, 10), width=16, anchor="w").grid(row=0, column=0, sticky="w")
-        self.ui_lang = tk.StringVar(value={"ru": "Русский", "en": "English"}[self.settings.get("ui_lang", "ru")])
-        c1 = ttk.Combobox(lg, textvariable=self.ui_lang, state="readonly", style="D.TCombobox",
-                          values=["Русский", "English"], width=14, font=(FONT, 10))
-        popdown_on_top(c1)
-        c1.grid(row=0, column=1, sticky="w", pady=3)
-        c1.bind("<<ComboboxSelected>>", lambda e: self._lang_changed())
-        tk.Label(lg, text="Клиент игры:", bg=BG, fg=FG, font=(FONT, 10), width=16, anchor="w").grid(row=1, column=0, sticky="w")
-        names = {"auto": "Авто (по тексту предмета)", "ru": "Русский", "en": "English"}
-        self.game_lang = tk.StringVar(value=names[self.settings.get("game_lang", "auto")])
-        c2 = ttk.Combobox(lg, textvariable=self.game_lang, state="readonly", style="D.TCombobox",
-                          values=list(names.values()), width=26, font=(FONT, 10))
-        popdown_on_top(c2)
-        c2.grid(row=1, column=1, sticky="w", pady=3)
-        c2.bind("<<ComboboxSelected>>", lambda e: self._game_lang_changed(names))
-        self.lang_status = tk.Label(lg, text="", bg=BG, fg=MUTED, font=(FONT, 9))
-        self.lang_status.grid(row=0, column=2, rowspan=2, padx=12, sticky="w")
-
-        # --- обновления
-        up = self._section(f, "Обновления")
-        self._act(up, "Обновить данные модов", self.update_data).grid(row=0, column=0, sticky="w", pady=3)
-        self._act(up, "Обновить цены", self.update_prices).grid(row=0, column=1, sticky="w", padx=8)
-        self._act(up, "Проверить обновления программы", self.check_updates).grid(row=0, column=2, sticky="w")
-        tk.Label(up, text="Репозиторий релизов (GitHub):", bg=BG, fg=MUTED, font=(FONT, 9)).grid(row=1, column=0, sticky="w", pady=(6, 0))
-        self.repo_var = tk.StringVar(value=self.settings.get("update_repo", ""))
-        self._entry(up, self.repo_var, 32).grid(row=1, column=1, columnspan=2, sticky="w", padx=8, pady=(6, 0))
-        self.up_status = tk.Label(f, text="", bg=BG, fg=MUTED, font=(FONT, 9), anchor="w", justify="left",
-                                  wraplength=900, cursor="hand2")
-        self.up_status.pack(fill="x", padx=6, pady=(6, 0))
-        self.up_status.bind("<Button-1>", lambda e: getattr(self, "_update_url", None) and __import__("webbrowser").open(self._update_url))
-
-        # --- о программе
-        ab = self._section(f, "О программе")
-        self.about_lbl = tk.Label(ab, text="", bg=BG, fg=FG, font=(FONT, 10), anchor="w", justify="left")
-        self.about_lbl.pack(fill="x")
-        self._refresh_about()
-
-    def _refresh_about(self):
-        upd = self.prices.updated
-        import time as _t
-        when = _t.strftime("%d.%m %H:%M", _t.localtime(upd)) if upd else "—"
-        self.about_lbl.configure(text=(f"PoE Craft Helper {APP_VERSION}\n"
-                                       f"Данные модов RePoE: {self.data.version}"
-                                       f"{' (+ русские)' if self.data.has_russian else ''}\n"
-                                       f"Цены: {self.prices.league}, {self.prices.source}, обновлены {when}\n"
-                                       f"Папка программы: {APP_DIR}"))
-
-    def _capture_hotkey(self, ev, var, key):
-        combo = hkmod.from_tk_event(ev)
-        if ev.keysym in ("BackSpace", "Delete") and not (ev.state & 0x0004):
-            var.set("")
-            return "break"
-        if combo:
-            if not any(m in combo for m in ("Ctrl", "Alt", "Shift")) and not combo.startswith("F"):
-                self.hk_status.configure(text="Добавь Ctrl, Alt или Shift — иначе клавиша будет мешать в игре.", fg=WARN)
-                return "break"
-            var.set(combo)
-            self.hk_status.configure(text=f"{combo} — нажми «Применить».", fg=MUTED)
-        return "break"
-
-    def apply_hotkey_settings(self):
-        hk = {}
-        for k, v in self.hk_vars.items():
-            val = v.get().strip()
-            if val == "нажми сочетание…":
-                val = ""
-            if val and not hkmod.parse(val):
-                self.hk_status.configure(text=f"Не понимаю сочетание «{val}».", fg=WARN)
-                return
-            hk[k] = hkmod.normalize(val) if val else ""
-        if hk.get("overlay") and hk.get("overlay") == hk.get("workshop"):
-            self.hk_status.configure(text="Сочетания должны отличаться.", fg=WARN)
-            return
-        self.settings["hotkeys"] = hk
-        self._save_settings(self.settings)
-        app = getattr(self, "app", None)
-        errors = app.apply_hotkeys() if app else []
-        if errors:
-            self.hk_status.configure(text="Не удалось: " + "; ".join(errors), fg=WARN)
-        elif not hkmod.HotkeyManager(None).supported:
-            self.hk_status.configure(text="Сохранено. Глобальные горячие клавиши работают только в Windows.", fg=MUTED)
-        else:
-            self.hk_status.configure(text="Горячие клавиши применены.", fg=GOOD)
-
-    def _lang_changed(self):
-        self.settings["ui_lang"] = "en" if self.ui_lang.get() == "English" else "ru"
-        self._save_settings(self.settings)
-        self.lang_status.configure(text="Язык интерфейса сменится после перезапуска программы.", fg=GOLD)
-
-    def _game_lang_changed(self, names):
-        inv = {v: k for k, v in names.items()}
-        self.settings["game_lang"] = inv.get(self.game_lang.get(), "auto")
-        self._save_settings(self.settings)
-        if self.settings["game_lang"] in ("ru", "auto") and not self.data.has_russian:
-            self.lang_status.configure(text="Для русского клиента нужны русские данные — нажми «Обновить данные модов».",
-                                       fg=WARN)
-        else:
-            self.lang_status.configure(text="Сохранено.", fg=GOOD)
-
-    def _bg(self, fn, done):
-        def run():
-            try:
-                res = fn()
-                self.after(0, lambda: done(res, None))
-            except Exception as e:
-                self.after(0, lambda: done(None, e))
-        threading.Thread(target=run, daemon=True).start()
-
-    def update_data(self):
-        from poecraft.data import download
-        self.up_status.configure(text="Скачиваю данные модов (≈50 МБ)… окно можно не закрывать.", fg=MUTED)
-        want_ru = self.settings.get("game_lang", "auto") != "en"
-
-        def done(ver, err):
-            if err:
-                self.up_status.configure(text=f"Ошибка загрузки: {err}", fg=WARN)
-                return
-            self.up_status.configure(text=f"Данные обновлены до {ver}. Перезапусти программу, чтобы они применились.", fg=GOOD)
-            self._refresh_about()
-        self._bg(lambda: download(self.data.dir, verbose=False, russian=want_ru), done)
-
-    def update_prices(self):
-        self.up_status.configure(text="Обновляю цены с poe.ninja…", fg=MUTED)
-
-        def done(ok, err):
-            if err or not ok:
-                self.up_status.configure(text=f"Не удалось обновить цены{': ' + str(err) if err else ''}.", fg=WARN)
-                return
-            self.up_status.configure(text=f"Цены обновлены: лига {self.prices.league}.", fg=GOOD)
-            self.q.put(("prices",))
-            self._refresh_about()
-        self._bg(lambda: self.prices.refresh(force=True), done)
-
-    def check_updates(self):
-        from poecraft import updater
-        repo = self.repo_var.get().strip()
-        self.settings["update_repo"] = repo
-        self._save_settings(self.settings)
-        self.up_status.configure(text="Проверяю…", fg=MUTED)
-
-        def done(r, err):
-            if err or r.get("error"):
-                self.up_status.configure(text=str(err or r["error"]), fg=WARN)
-                return
-            if r["newer"]:
-                self._update_url = r["url"]
-                self.up_status.configure(text=f"Доступна версия {r['latest']} (у тебя {APP_VERSION}). "
-                                              f"Кликни сюда, чтобы скачать.", fg=GOOD)
-            else:
-                self.up_status.configure(text=f"У тебя последняя версия ({APP_VERSION}).", fg=GOOD)
-        self._bg(lambda: updater.check(repo), done)
-
     # ------------------------------------------------------------ окно
     def _focus_input(self, e):
         w = e.widget
@@ -1229,11 +1035,11 @@ class MainWindow(tk.Toplevel):
         self.table = pool_table(self.pool)
         self.settings.update(main_base=base.name, main_ilvl=ilvl)
         self._save_settings(self.settings)
-        cls = recipes.CLASS_RU.get(base.item_class, base.item_class)
+        cls = recipes.CLASS_RU.get(base.item_class, base.item_class) if i18n.lang() == "ru" else base.item_class
         infl = self.inf_var.get()
         self.info_lbl.configure(text=f"{cls}" + (f" · влияние {infl} (◆ — его моды)" if infl in self.inf_map else ""))
-        self.status.configure(text=f"{len(self.table['groups'])} групп модов · вес префиксов "
-                                   f"{self.table['prefix_weight']:,} · суффиксов {self.table['suffix_weight']:,}"
+        self.status.configure(text=f"{len(self.table['groups'])} {i18n.t('групп модов · вес префиксов')} "
+                                   f"{self.table['prefix_weight']:,} · {i18n.t('суффиксов')} {self.table['suffix_weight']:,}"
                               .replace(",", " "), fg=MUTED)
         # выбранные моды, которых нет на новой базе/ilvl, убираем
         keys = {(g["kind"], g["type"]) for g in self.table["groups"]}
@@ -1281,7 +1087,7 @@ class MainWindow(tk.Toplevel):
                 is_inf = any(inf.is_influence_mod(e.mod) for e in self.pool.all
                              if e.mod.kind == g["kind"] and e.mod.type == g["type"])
                 tv.insert("", "end", iid=gid, text=("◆ " if is_inf else "") + short(g["text"]),
-                          values=("☑" if sel else "☐", pct(g["chance_all"]), pct(g["chance_kind"]), f"до T{tier}"),
+                          values=("☑" if sel else "☐", pct(g["chance_all"]), pct(g["chance_kind"]), f"{i18n.t('до T')}{tier}"),
                           tags=("sel",) if sel else (("infl",) if is_inf else ()))
                 for t in g["tiers"]:
                     rng_ = " ".join(__import__("re").findall(r"\([\d.]+-[\d.]+\)|(?<![\w(])\d+(?:\.\d+)?(?![\w)-])", t["text"]))
@@ -1306,7 +1112,9 @@ class MainWindow(tk.Toplevel):
         key = (g["kind"], g["type"])
         avail = sorted(t["tier"] for t in g["tiers"] if t["available"])
         cur = tv.set(iid, "tier")
-        cur_t = int(cur.replace("до T", "")) if cur.startswith("до T") else min(3, avail[-1])
+        import re as _re
+        _m = _re.search(r"(\d+)$", cur or "")
+        cur_t = int(_m.group(1)) if _m else min(3, avail[-1])
         if col == "#1":  # ☐
             if key in self.selected:
                 del self.selected[key]
@@ -1314,7 +1122,7 @@ class MainWindow(tk.Toplevel):
                 self.selected[key] = {"max_tier": cur_t, "label": short(g["text"])}
         elif col == "#4":  # тир по кругу
             nxt = avail[(avail.index(cur_t) + 1) % len(avail)] if cur_t in avail else avail[0]
-            tv.set(iid, "tier", f"до T{nxt}")
+            tv.set(iid, "tier", f"{i18n.t('до T')}{nxt}")
             if key in self.selected:
                 self.selected[key]["max_tier"] = nxt
             return "break"
@@ -1329,7 +1137,7 @@ class MainWindow(tk.Toplevel):
         if not self.selected:
             self.targets_lbl.configure(text="ничего не выбрано", fg=MUTED)
             return
-        lines = [f"{'П' if k[0] == 'prefix' else 'С'} · {v['label']}  — до T{v['max_tier']}"
+        lines = [f"{i18n.t('П') if k[0] == 'prefix' else i18n.t('С')} · {v['label']}  — {i18n.t('до T')}{v['max_tier']}"
                  for k, v in self.selected.items()]
         self.targets_lbl.configure(text="\n".join(lines), fg=FG)
 

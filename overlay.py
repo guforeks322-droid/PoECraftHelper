@@ -55,6 +55,7 @@ def save_settings(d: dict):
 class Overlay:
     def __init__(self):
         self.settings = load_settings()
+        self.save_settings = save_settings
         i18n.set_lang(self.settings.get("ui_lang", "ru"))
         self.root = tk.Tk()
         self.root.title("PoE Craft Helper")
@@ -264,17 +265,18 @@ class Overlay:
                 self.root.withdraw()
         elif action == "workshop":
             self.open_main()
+        elif action == "settings":
+            self.open_settings()
 
-    def open_settings(self):
-        if not self.data:
-            self.set_status("Данные ещё загружаются, подожди пару секунд…")
-            return
-        win = getattr(self, "main_win", None)
-        if win is None or not win.winfo_exists() or win.state() == "withdrawn":
-            self.open_main()
-        win = getattr(self, "main_win", None)
+    def open_settings(self, section: str = "hotkeys"):
+        from settings_win import SettingsWindow
+        win = getattr(self, "settings_win", None)
         if win is not None and win.winfo_exists():
-            win.nb.select(win.tab_settings)
+            win.deiconify()
+            win.lift()
+            win.show(section)
+            return
+        self.settings_win = SettingsWindow(self, section)
 
     def quit(self):
         try:
@@ -289,6 +291,10 @@ class Overlay:
         # некоторые игры перехватывают topmost — периодически возвращаем
         try:
             from mainwin import popdown_open
+            if not self.settings.get("keep_on_top", True):
+                self.root.attributes("-topmost", False)
+                self.root.after(2000, self._keep_on_top)
+                return
             if popdown_open():
                 self.root.after(2000, self._keep_on_top)
                 return
@@ -413,6 +419,9 @@ class Overlay:
         if text and text != self.last_clip:
             self.last_clip = text
             if looks_like_item(text):
+                if self.settings.get("auto_show", True) and self.root.state() == "withdrawn":
+                    self.root.deiconify()
+                    self.root.attributes("-topmost", True)
                 self.last_text = text
                 self._analyze(text)
         self.root.after(300, self._poll_clipboard)
