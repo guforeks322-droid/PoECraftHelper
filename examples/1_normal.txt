@@ -1,0 +1,8 @@
+Item Class: Belts
+Rarity: Normal
+Leather Belt
+--------
+Item Level: 84
+--------
+{ Implicit Modifier — Life }
++34(25-40) to maximum Life (implicit)

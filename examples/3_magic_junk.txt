@@ -1,0 +1,13 @@
+Item Class: Belts
+Rarity: Magic
+Athlete's Leather Belt of the Brute
+--------
+Item Level: 84
+--------
+{ Implicit Modifier — Life }
++34(25-40) to maximum Life (implicit)
+--------
+{ Prefix Modifier "Athlete's" (Tier: 2) — Life }
++121(115-129) to maximum Life
+{ Suffix Modifier "of the Brute" (Tier: 10) — Attribute }
++10(8-12) to Strength

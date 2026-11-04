@@ -1,0 +1,11 @@
+Item Class: Belts
+Rarity: Magic
+Athlete's Leather Belt
+--------
+Item Level: 84
+--------
+{ Implicit Modifier — Life }
++34(25-40) to maximum Life (implicit)
+--------
+{ Prefix Modifier "Athlete's" (Tier: 2) — Life }
++121(115-129) to maximum Life

@@ -1,0 +1,25 @@
+{
+ "v": 1,
+ "name": "Амулет: жизнь + крит. множитель",
+ "author": "PoE Craft Helper",
+ "description": "Лучший способ по ценам лиги Allflame: Alteration + Augmentation — в среднем ~177c (≈0.4 div)",
+ "base_class": "Amulet",
+ "base": "Onyx Amulet",
+ "min_ilvl": 84,
+ "wanted": [
+  {
+   "label": "Жизнь",
+   "mod_type": "IncreasedLife",
+   "kind": "prefix",
+   "pattern": "",
+   "max_tier": 3
+  },
+  {
+   "label": "Крит. множитель",
+   "mod_type": "CriticalStrikeMultiplier",
+   "kind": "suffix",
+   "pattern": "",
+   "max_tier": 2
+  }
+ ]
+}

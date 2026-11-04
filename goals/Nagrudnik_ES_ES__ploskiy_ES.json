@@ -1,0 +1,25 @@
+{
+ "v": 1,
+ "name": "Нагрудник ES: %ES + плоский ES",
+ "author": "PoE Craft Helper",
+ "description": "Лучший способ по ценам лиги Allflame: Спам: Deafening Essence of Woe — в среднем ~372c (≈0.9 div)",
+ "base_class": "Body Armour",
+ "base": "Vaal Regalia",
+ "min_ilvl": 84,
+ "wanted": [
+  {
+   "label": "%ES",
+   "mod_type": "LocalEnergyShieldPercent",
+   "kind": "prefix",
+   "pattern": "",
+   "max_tier": 2
+  },
+  {
+   "label": "ES",
+   "mod_type": "LocalEnergyShield",
+   "kind": "prefix",
+   "pattern": "",
+   "max_tier": 2
+  }
+ ]
+}

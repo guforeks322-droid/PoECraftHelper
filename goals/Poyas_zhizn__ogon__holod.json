@@ -1,0 +1,32 @@
+{
+ "v": 1,
+ "name": "Пояс: жизнь + огонь + холод",
+ "author": "PoE Craft Helper",
+ "description": "Лучший способ по ценам лиги Allflame: Спам: Shrieking Essence of Anger — в среднем ~126c (≈0.3 div)",
+ "base_class": "Belt",
+ "base": "Stygian Vise",
+ "min_ilvl": 84,
+ "wanted": [
+  {
+   "label": "Жизнь",
+   "mod_type": "IncreasedLife",
+   "kind": "prefix",
+   "pattern": "",
+   "max_tier": 3
+  },
+  {
+   "label": "Огонь",
+   "mod_type": "FireResistance",
+   "kind": "suffix",
+   "pattern": "",
+   "max_tier": 3
+  },
+  {
+   "label": "Холод",
+   "mod_type": "ColdResistance",
+   "kind": "suffix",
+   "pattern": "",
+   "max_tier": 3
+  }
+ ]
+}

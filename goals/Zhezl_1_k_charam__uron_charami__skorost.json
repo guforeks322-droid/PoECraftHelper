@@ -1,0 +1,32 @@
+{
+ "v": 1,
+ "name": "Жезл: +1 к чарам + урон чарами + скорость",
+ "author": "PoE Craft Helper",
+ "description": "Лучший способ по ценам лиги Allflame: Фоссилы: Corroded + Metallic + Shuddering — в среднем ~137 400c (≈336.2 div)",
+ "base_class": "Wand",
+ "base": "Imbued Wand",
+ "min_ilvl": 84,
+ "wanted": [
+  {
+   "label": "+1 к камням чар",
+   "mod_type": "GlobalIncreaseSpellSkillGemLevel",
+   "kind": "prefix",
+   "pattern": "",
+   "max_tier": 1
+  },
+  {
+   "label": "Урон чарами",
+   "mod_type": "WeaponSpellDamage",
+   "kind": "prefix",
+   "pattern": "",
+   "max_tier": 2
+  },
+  {
+   "label": "Скорость сотворения",
+   "mod_type": "IncreasedCastSpeed",
+   "kind": "suffix",
+   "pattern": "",
+   "max_tier": 2
+  }
+ ]
+}

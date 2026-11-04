@@ -1,0 +1,32 @@
+{
+ "v": 1,
+ "name": "Ботинки ES: скорость + %ES + резист",
+ "author": "PoE Craft Helper",
+ "description": "Лучший способ по ценам лиги Allflame: Спам: Shrieking Essence of Zeal — в среднем ~250c (≈0.6 div)",
+ "base_class": "Boots",
+ "base": "Sorcerer Boots",
+ "min_ilvl": 84,
+ "wanted": [
+  {
+   "label": "Скорость передвижения",
+   "mod_type": "MovementVelocity",
+   "kind": "prefix",
+   "pattern": "",
+   "max_tier": 2
+  },
+  {
+   "label": "%ES",
+   "mod_type": "LocalEnergyShieldPercent",
+   "kind": "prefix",
+   "pattern": "",
+   "max_tier": 2
+  },
+  {
+   "label": "Холод",
+   "mod_type": "ColdResistance",
+   "kind": "suffix",
+   "pattern": "",
+   "max_tier": 3
+  }
+ ]
+}
