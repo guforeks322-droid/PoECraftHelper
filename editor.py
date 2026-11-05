@@ -34,16 +34,22 @@ class RecipeEditor(tk.Toplevel):
         super().__init__(master)
         self.data, self.on_save = data, on_save
         self.title("Редактор крафта")
-        self.configure(bg=BG)
+        self.configure(bg=BG, highlightthickness=1, highlightbackground="#3a3127")
         self.attributes("-topmost", True)
-        # открываем рядом с панелью, чтобы не перекрывать её
-        mx, my = master.winfo_x(), master.winfo_y()
-        sw = master.winfo_screenwidth()
-        x = mx + master.winfo_width() + 10
-        if x + 820 > sw:
-            x = max(0, mx - 830)
-        self.geometry(f"820x560+{x}+{max(0, my)}")
-        self.minsize(760, 500)
+        # по центру над окном, из которого открыли (хаб или оверлей)
+        W, H = 940, 620
+        sw, sh = master.winfo_screenwidth(), master.winfo_screenheight()
+        if master.winfo_viewable() and master.winfo_width() > 300:
+            x = master.winfo_x() + (master.winfo_width() - W) // 2
+            y = master.winfo_y() + (master.winfo_height() - H) // 2
+        else:
+            x, y = (sw - W) // 2, (sh - H) // 2
+        x, y = min(max(0, x), max(0, sw - W)), min(max(0, y), max(0, sh - H))
+        self.geometry(f"{W}x{H}+{x}+{y}")
+        self.minsize(820, 540)
+        from settings_win import frameless
+        self.bind("<Map>", lambda e: e.widget is self and self.after(10, lambda: frameless(self)), add="+")
+        self.after(300, lambda: frameless(self))
         self.groups: list[dict] = []      # доступные моды выбранной базы
         self.wanted: list[dict] = []      # выбранные
         self._build()
@@ -74,7 +80,27 @@ class RecipeEditor(tk.Toplevel):
         sb.pack(side="right", fill="y")
         return frame, lb
 
+    def _drag_start(self, e):
+        self._dx, self._dy = e.x_root - self.winfo_x(), e.y_root - self.winfo_y()
+
+    def _drag_move(self, e):
+        self.geometry(f"+{e.x_root - self._dx}+{e.y_root - self._dy}")
+
     def _build(self):
+        head = tk.Frame(self, bg=BG2)
+        head.pack(fill="x")
+        t = tk.Label(head, text="РЕДАКТОР КРАФТА", bg=BG2, fg=GOLD, font=(FONT, 10, "bold"))
+        t.pack(side="left", padx=10, pady=6)
+        for w in (head, t):
+            w.bind("<ButtonPress-1>", self._drag_start)
+            w.bind("<B1-Motion>", self._drag_move)
+        x = tk.Label(head, text="✕", bg=BG2, fg=MUTED, font=(FONT, 11), cursor="hand2", padx=10)
+        x.pack(side="right")
+        x.bind("<Button-1>", lambda e: self.destroy())
+        x.bind("<Enter>", lambda e: x.configure(fg=WARN))
+        x.bind("<Leave>", lambda e: x.configure(fg=MUTED))
+        self.bind("<Escape>", lambda e: self.destroy())
+
         top = tk.Frame(self, bg=BG)
         top.pack(fill="x", padx=12, pady=(12, 6))
         self.name_var, self.author_var = tk.StringVar(), tk.StringVar()
@@ -112,13 +138,16 @@ class RecipeEditor(tk.Toplevel):
         mid = tk.Frame(self, bg=BG)
         mid.pack(fill="both", expand=True, padx=12, pady=6)
         left = tk.Frame(mid, bg=BG)
-        left.pack(side="left", fill="both", expand=True)
+        left.grid(row=0, column=0, sticky="nsew")
         right = tk.Frame(mid, bg=BG)
-        right.pack(side="left", fill="both", expand=True, padx=(10, 0))
+        right.grid(row=0, column=1, sticky="nsew", padx=(12, 0))
+        mid.columnconfigure(0, weight=3, uniform="m")
+        mid.columnconfigure(1, weight=2, uniform="m")
+        mid.rowconfigure(0, weight=1)
 
         srow = tk.Frame(left, bg=BG)
         srow.pack(fill="x")
-        self._lbl(srow, "Моды базы  (П — префикс, С — суффикс). Поиск:").pack(side="left")
+        self._lbl(srow, "Моды базы (П/С). Поиск:").pack(side="left")
         self.search_var = tk.StringVar()
         self.search_var.trace_add("write", lambda *a: self._render_mods())
         self._entry(srow, self.search_var, 18).pack(side="left", padx=6, fill="x", expand=True)
@@ -127,13 +156,13 @@ class RecipeEditor(tk.Toplevel):
         self.mods_lb.bind("<Double-Button-1>", lambda e: self._add())
         self._button(left, "Добавить  →", self._add, GOLD).pack(anchor="e")
 
-        self._lbl(right, "Нужные моды  (двойной клик в левом списке — добавить)").pack(anchor="w")
+        self._lbl(right, "Нужные моды — двойной клик слева добавляет").pack(anchor="w")
         f, self.want_lb = self._listbox(right)
         f.pack(fill="both", expand=True, pady=4)
         self.want_lb.bind("<<ListboxSelect>>", lambda e: self._want_selected())
         trow = tk.Frame(right, bg=BG)
         trow.pack(fill="x")
-        self._lbl(trow, "Минимальный тир (1 = лучший):").pack(side="left")
+        self._lbl(trow, "Худший тир (1 = лучший):").pack(side="left")
         self.tier_var = tk.IntVar(value=3)
         tsp = tk.Spinbox(trow, from_=1, to=30, textvariable=self.tier_var, width=4, bg=BG2, fg=FG,
                          relief="flat", buttonbackground=BG2, command=self._tier_changed)

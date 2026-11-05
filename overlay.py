@@ -12,6 +12,7 @@ import os
 import queue
 import sys
 import threading
+import time
 import tkinter as tk
 import traceback
 from tkinter import ttk
@@ -35,7 +36,15 @@ WARN = "#e07a5f"
 FONT = "Segoe UI"
 SETTINGS = APP_DIR / "settings.json"
 GOALS_DIR = APP_DIR / "goals"
-WIDTH = 400
+WIDTH = 390
+CARD = "#1a1611"
+TRACK = "#2a241c"
+LINE = "#3a3127"
+GOLD_LINE = "#6b5a22"
+DIM = "#5a5248"
+# цвета заголовка по редкости — как в игре, только приглушённые
+RARITY = {"Normal": ("#1f1d1a", "#c8c8c8"), "Magic": ("#161a2a", "#8888ff"),
+          "Rare": ("#2a2410", "#f0dc78"), "Unique": ("#2a1a0e", "#c87c3c")}
 
 
 def load_settings() -> dict:
@@ -73,6 +82,8 @@ class Overlay:
         self.advisor = None
         self.goals: list[tuple[str, Goal]] = []
 
+        from poecraft import icons
+        icons.store(self.root)            # иконки валюты: из data/icons или скачать в фоне
         self._build_ui()
         i18n.translate_tree(self.root)
         self.hk = HotkeyManager(lambda action: self.root.after(0, lambda: self._on_hotkey(action)))
@@ -81,9 +92,16 @@ class Overlay:
         self.set_status("Загружаю данные модов…")
         threading.Thread(target=self._init_data, daemon=True).start()
 
+        self.goals_dir = GOALS_DIR
+        self.hub = None
+        if self.settings.get("hub_on_start", True):
+            self.root.withdraw()          # оверлей появится сам, когда скопируешь предмет
+            self.root.after(50, self.open_hub)
+
         self.root.after(300, self._poll_clipboard)
         self.root.after(100, self._poll_results)
         self.root.after(1000, self._keep_on_top)
+        self.root.after(500, self._auto_hide)
 
     # ------------------------------------------------------------ UI
     def _build_ui(self):
@@ -102,68 +120,84 @@ class Overlay:
         r.option_add("*TCombobox*Listbox.foreground", FG)
         r.option_add("*TCombobox*Listbox.selectBackground", "#3a3127")
 
-        # Заголовок (за него таскаем окно)
-        head = tk.Frame(r, bg=BG2)
-        head.pack(fill="x")
-        title = tk.Label(head, text="⚒ PoE Craft Helper", bg=BG2, fg=GOLD, font=(FONT, 10, "bold"))
-        title.pack(side="left", padx=8, pady=4)
-        for w in (head, title):
+        # Заголовок карточки: цвет по редкости предмета, за него таскаем окно
+        self.head = tk.Frame(r, bg=BG2)
+        self.head.pack(fill="x")
+        hl = tk.Frame(self.head, bg=BG2)
+        hl.pack(side="left", fill="x", expand=True, padx=10, pady=(5, 5))
+        self.title_lbl = tk.Label(hl, text="⚒ PoE Craft Helper", bg=BG2, fg=GOLD, font=(FONT, 11, "bold"),
+                                  anchor="w")
+        self.title_lbl.pack(fill="x")
+        self.sub_lbl = tk.Label(hl, text="скопируй предмет в игре", bg=BG2, fg=MUTED, font=(FONT, 8), anchor="w")
+        self.sub_lbl.pack(fill="x")
+        self._drag_widgets = [self.head, hl, self.title_lbl, self.sub_lbl]
+        for w in self._drag_widgets:
             w.bind("<ButtonPress-1>", self._drag_start)
             w.bind("<B1-Motion>", self._drag_move)
             w.bind("<ButtonRelease-1>", self._drag_end)
-        self._btn(head, "✕", self.quit, WARN).pack(side="right", padx=(0, 6))
-        self.collapse_btn = self._btn(head, "—", self.toggle_collapse)
-        self.collapse_btn.pack(side="right")
-        self._btn(head, "◐", self.cycle_alpha).pack(side="right")
-        self._btn(head, "⚙", self.open_settings).pack(side="right")
+        self.head_btns = []
+        for text, cmd, fg in (("✕", self.hide_overlay, WARN), ("—", self.toggle_collapse, FG),
+                              ("◐", self.cycle_alpha, FG), ("⌂", self.open_hub, GOLD)):
+            b = self._btn(self.head, text, cmd, fg)
+            b.pack(side="right", padx=(0, 6 if text == "✕" else 0))
+            self.head_btns.append(b)
+            if text == "—":
+                self.collapse_btn = b
+        self.rarity_line = tk.Frame(r, bg=LINE, height=1)
+        self.rarity_line.pack(fill="x")
 
         # Тело
         self.body = tk.Frame(r, bg=BG)
         self.body.pack(fill="both", expand=True)
 
         row = tk.Frame(self.body, bg=BG)
-        row.pack(fill="x", padx=8, pady=(8, 4))
+        row.pack(fill="x", padx=10, pady=(8, 2))
         tk.Label(row, text="Цель:", bg=BG, fg=MUTED, font=(FONT, 9)).pack(side="left")
         self.goal_var = tk.StringVar()
         self.goal_box = ttk.Combobox(row, textvariable=self.goal_var, state="readonly",
                                      style="G.TCombobox", font=(FONT, 9), width=34)
         from mainwin import popdown_on_top
         popdown_on_top(self.goal_box)
-        self.goal_box.pack(side="left", padx=4, fill="x", expand=True)
+        self.goal_box.pack(side="left", padx=(6, 0), fill="x", expand=True)
         self.goal_box.bind("<<ComboboxSelected>>", self._goal_changed)
 
-        acts = tk.Frame(self.body, bg=BG)
-        acts.pack(fill="x", padx=6, pady=(0, 4))
-        for text, cmd in (("+ новый", self.new_recipe), ("изменить", self.edit_recipe),
-                          ("поделиться", self.share_recipe), ("импорт", self.import_recipe),
-                          ("папка", self.open_goals), ("мастерская", self.open_main)):
-            self._btn(acts, text, cmd).pack(side="left")
-
-        self.item_lbl = tk.Label(self.body, text="", bg=BG, fg=FG, font=(FONT, 10, "bold"),
-                                 anchor="w", justify="left", wraplength=WIDTH - 20)
-        self.item_lbl.pack(fill="x", padx=10)
         self.mods_frame = tk.Frame(self.body, bg=BG)
-        self.mods_frame.pack(fill="x", padx=10)
+        self.mods_frame.pack(fill="x", padx=10, pady=(4, 0))
 
-        sep = tk.Frame(self.body, bg="#3a3127", height=1)
-        sep.pack(fill="x", padx=8, pady=6)
-
-        self.step_lbl = tk.Label(self.body, text="", bg=BG, fg=GOLD, font=(FONT, 14, "bold"),
-                                 anchor="w", justify="left", wraplength=WIDTH - 20)
-        self.step_lbl.pack(fill="x", padx=10)
-        self.chance_lbl = tk.Label(self.body, text="", bg=BG, fg=FG, font=(FONT, 10),
-                                   anchor="w", justify="left")
-        self.chance_lbl.pack(fill="x", padx=10)
-        self.why_lbl = tk.Label(self.body, text="", bg=BG, fg=FG, font=(FONT, 9),
-                                anchor="w", justify="left", wraplength=WIDTH - 20)
-        self.why_lbl.pack(fill="x", padx=10, pady=(4, 0))
-        self.notes_lbl = tk.Label(self.body, text="", bg=BG, fg=MUTED, font=(FONT, 9),
-                                  anchor="w", justify="left", wraplength=WIDTH - 20)
-        self.notes_lbl.pack(fill="x", padx=10, pady=(4, 0))
+        # Карточка «следующий шаг»
+        self.step_card = tk.Frame(self.body, bg=CARD, highlightthickness=1, highlightbackground=GOLD_LINE)
+        inner = tk.Frame(self.step_card, bg=CARD)
+        inner.pack(fill="x", padx=10, pady=8)
+        self.step_cap = tk.Label(inner, text="СЛЕДУЮЩИЙ ШАГ", bg=CARD, fg=MUTED, font=(FONT, 7, "bold"), anchor="w")
+        self.step_cap.pack(fill="x")
+        srow = tk.Frame(inner, bg=CARD)
+        srow.pack(fill="x")
+        self.step_icon = tk.Label(srow, bg=CARD)
+        self.step_lbl = tk.Label(srow, text="", bg=CARD, fg=GOLD, font=(FONT, 14, "bold"),
+                                 anchor="w", justify="left", wraplength=WIDTH - 90)
+        self.step_lbl.pack(side="left", fill="x", expand=True)
+        cr = tk.Frame(inner, bg=CARD)
+        cr.pack(fill="x", pady=(4, 0))
+        self.chance_lbl = tk.Label(cr, text="", bg=CARD, fg=FG, font=(FONT, 10), anchor="w")
+        self.chance_lbl.pack(side="left")
+        self.tries_lbl = tk.Label(cr, text="", bg=CARD, fg=MUTED, font=(FONT, 9), anchor="e")
+        self.tries_lbl.pack(side="right")
+        self.bar = tk.Canvas(inner, height=5, bg=TRACK, highlightthickness=0, bd=0)
+        self.bar.pack(fill="x", pady=(4, 0))
+        self.bar.bind("<Configure>", lambda e: self._draw_bar())
+        self.why_lbl = tk.Label(inner, text="", bg=CARD, fg=FG, font=(FONT, 9),
+                                anchor="w", justify="left", wraplength=WIDTH - 44)
+        self.why_lbl.pack(fill="x", pady=(6, 0))
+        self.notes_lbl = tk.Label(inner, text="", bg=CARD, fg=MUTED, font=(FONT, 9),
+                                  anchor="w", justify="left", wraplength=WIDTH - 44)
+        self.notes_lbl.pack(fill="x", pady=(4, 0))
 
         self.status_lbl = tk.Label(self.body, text="", bg=BG, fg=MUTED, font=(FONT, 8),
                                    anchor="w", justify="left", wraplength=WIDTH - 20)
-        self.status_lbl.pack(fill="x", padx=10, pady=(8, 8))
+        self.status_lbl.pack(fill="x", padx=10, pady=(6, 8), side="bottom")
+        self.body.bind("<Enter>", lambda e: self._hover(True))
+        self.root.bind("<Enter>", lambda e: self._hover(True), add="+")
+        self.root.bind("<Leave>", lambda e: self._hover(False), add="+")
         self._resize()
 
     def _btn(self, parent, text, cmd, fg=FG):
@@ -200,6 +234,7 @@ class Overlay:
             self.body.pack(fill="both", expand=True)
             self.collapse_btn.configure(text="—")
         self._resize()
+        self.root.after(30, self._draw_bar)
 
     def cycle_alpha(self):
         levels = [0.92, 0.75, 0.55, 1.0]
@@ -236,6 +271,62 @@ class Overlay:
             self.goal_box.current(names.index(filename))
             self._goal_changed()
 
+    # ------------------------------------------------------------ хаб
+    def open_hub(self):
+        try:
+            if self.hub is not None and self.hub.winfo_exists():
+                self.hub.show()
+                return
+            from hub import HubWindow
+            self.hub = HubWindow(self)
+        except Exception as e:
+            traceback.print_exc()
+            self.root.deiconify()
+            self.set_status(f"Не удалось открыть хаб: {e}")
+
+    def toggle_hub(self):
+        if self.hub is not None and self.hub.winfo_exists() and self.hub.state() != "withdrawn":
+            self.hub.hide()
+        else:
+            self.open_hub()
+
+    def refresh_hub(self):
+        if self.hub is not None and self.hub.winfo_exists() and self.hub.state() != "withdrawn":
+            self.hub.refresh()
+
+    def hide_overlay(self):
+        self.root.withdraw()
+        if self.hub is None or not self.hub.winfo_exists():
+            self.open_hub()
+
+    def set_goal(self, filename: str):
+        names = [f for f, _ in self.goals]
+        if filename in names:
+            self.goal_box.current(names.index(filename))
+            self._goal_changed()
+
+    def reload_goals(self):
+        self._load_goals()
+        self.refresh_hub()
+
+    def reopen_item(self, text: str):
+        self.root.deiconify()
+        self.root.attributes("-topmost", True)
+        self.last_text = text
+        self._analyze(text)
+
+    def _remember_item(self, item, mods):
+        g = self.current_goal()
+        if not g or not self.last_text:
+            return
+        done = sum(1 for m in mods if m[3])
+        entry = {"name": item.name or item.base_name, "goal": g.name, "done": min(done, len(g.wanted)),
+                 "total": len(g.wanted), "text": self.last_text}
+        rec = [r for r in self.settings.get("recent", []) if r.get("text") != self.last_text]
+        self.settings["recent"] = [entry] + rec[:7]
+        save_settings(self.settings)
+        self.refresh_hub()
+
     def open_goals(self):
         GOALS_DIR.mkdir(exist_ok=True)
         try:
@@ -267,6 +358,8 @@ class Overlay:
             self.open_main()
         elif action == "settings":
             self.open_settings()
+        elif action == "hub":
+            self.toggle_hub()
 
     def open_settings(self, section: str = "hotkeys"):
         from settings_win import SettingsWindow
@@ -299,7 +392,7 @@ class Overlay:
                 self.root.after(2000, self._keep_on_top)
                 return
             editors = [w for w in self.root.winfo_children() if isinstance(w, tk.Toplevel)
-                       and w.winfo_viewable()]
+                       and w.winfo_viewable() and w is not self.hub]
             if editors:
                 for w in editors:
                     w.lift()
@@ -334,7 +427,7 @@ class Overlay:
     def new_recipe(self):
         if self._need_data():
             from editor import RecipeEditor
-            RecipeEditor(self.root, self.data, lambda r: self._saved(r, None))
+            RecipeEditor(self._parent(), self.data, lambda r: self._saved(r, None))
 
     def edit_recipe(self):
         if not self._need_data():
@@ -343,7 +436,13 @@ class Overlay:
         if not g:
             return self.new_recipe()
         from editor import RecipeEditor
-        RecipeEditor(self.root, self.data, lambda r: self._saved(r, f), recipe=g.raw)
+        RecipeEditor(self._parent(), self.data, lambda r: self._saved(r, f), recipe=g.raw)
+
+    def _parent(self):
+        """Окно, рядом с которым открывать редактор: хаб, если он виден, иначе оверлей."""
+        if self.hub is not None and self.hub.winfo_exists() and self.hub.state() != "withdrawn":
+            return self.hub
+        return self.root
 
     def _saved(self, recipe, filename):
         path = recipes.save(recipe, GOALS_DIR, filename)
@@ -351,6 +450,7 @@ class Overlay:
         save_settings(self.settings)
         self._load_goals()
         self.set_status(f"Крафт «{recipe['name']}» сохранён.")
+        self.refresh_hub()
         if self.last_text:
             self._analyze(self.last_text)
 
@@ -388,7 +488,8 @@ class Overlay:
         if g:
             self.settings["goal"] = g
             save_settings(self.settings)
-        if self.last_text:
+        self.refresh_hub()
+        if self.last_text and self.root.state() != "withdrawn":
             self._analyze(self.last_text)
 
     def current_goal(self) -> Goal | None:
@@ -406,6 +507,7 @@ class Overlay:
             _ = self.data.mods, self.data.bases, self.data.bench  # прогрев
             self.advisor = Advisor(self.data)
             self.results.put(("status", f"Данные {self.data.version}. Наведи на предмет в игре и нажми Ctrl+Alt+C."))
+            self.results.put(("hub",))
         except Exception as e:
             self.results.put(("status", f"Не удалось загрузить данные: {e}"))
 
@@ -433,7 +535,7 @@ class Overlay:
             self.last_clip = None
             return
         if not goal:
-            self.set_status("Нет цели — добавь .json в папку goals (кнопка «папка»).")
+            self.set_status("Нет цели — выбери крафт в хабе (⌂ → Мои крафты).")
             return
         self.set_status("Считаю…")
         threading.Thread(target=self._work, args=(text, goal), daemon=True).start()
@@ -461,6 +563,8 @@ class Overlay:
                 msg = self.results.get_nowait()
                 if msg[0] == "status":
                     self.set_status(msg[1])
+                elif msg[0] == "hub":
+                    self.refresh_hub()
                 else:
                     self.show(*msg[1:])
         except queue.Empty:
@@ -470,36 +574,132 @@ class Overlay:
     # ------------------------------------------------------------ вывод
     def set_status(self, text):
         self.status_lbl.configure(text=text)
+        if self.root.state() == "withdrawn" and getattr(self, "hub", None) is not None:
+            try:
+                if self.hub.winfo_exists() and self.hub.state() != "withdrawn":
+                    self.hub.set_status(text)
+            except tk.TclError:
+                pass
         self._resize()
 
     def show(self, item, base, mods, adv):
-        name = item.name if item.name == base else f"{item.name} — {base}"
-        self.item_lbl.configure(text=f"{name}   ({item.rarity}, ilvl {item.ilvl})", pady=4)
+        hb, hf = RARITY.get(item.rarity, (BG2, GOLD))
+        name = item.name if item.name and item.name != base else base
+        sub = [base] if name != base else []
+        sub += [f"ilvl {item.ilvl}", {"Normal": "обычный", "Magic": "магический", "Rare": "редкий",
+                                      "Unique": "уникальный"}.get(item.rarity, item.rarity)]
+        if item.influences:
+            sub.append(", ".join(item.influences))
+        if item.corrupted:
+            sub.append("осквернён")
+        self._paint_head(hb, hf, GOLD_LINE if item.rarity == "Rare" else LINE)
+        self.title_lbl.configure(text=name)
+        self.sub_lbl.configure(text="  ·  ".join(str(x) for x in sub if x))
+
         for w in self.mods_frame.winfo_children():
             w.destroy()
-        for kind, tier, text, ok in mods:
-            row = tk.Frame(self.mods_frame, bg=BG)
-            row.pack(fill="x")
-            color = GOOD if ok else BAD
-            tk.Label(row, text=f"{kind} {tier:<5}", bg=BG, fg=color, font=("Consolas", 9),
-                     width=9, anchor="w").pack(side="left")
-            tk.Label(row, text=text, bg=BG, fg=color, font=(FONT, 9), anchor="w",
-                     justify="left", wraplength=WIDTH - 100).pack(side="left", fill="x")
+        limit = 2 if "Jewel" in (item.item_class or "") else (1 if item.rarity == "Magic" else 3)
+        for kind_key, cap in (("П", "ПРЕФИКСЫ"), ("С", "СУФФИКСЫ")):
+            part = [m for m in mods if m[0] == kind_key]
+            hdr = tk.Frame(self.mods_frame, bg=BG)
+            hdr.pack(fill="x", pady=(6, 1))
+            tk.Label(hdr, text=cap, bg=BG, fg=MUTED, font=(FONT, 7, "bold")).pack(side="left")
+            free = max(0, limit - len(part))
+            tk.Label(hdr, text=f"{len(part)}/{limit}" + (f"  ·  свободно {free}" if free else ""),
+                     bg=BG, fg=GOOD if free else DIM, font=(FONT, 8)).pack(side="left", padx=6)
+            if not part:
+                tk.Label(self.mods_frame, text="—", bg=BG, fg=DIM, font=(FONT, 9), anchor="w").pack(fill="x")
+            for _, tier, text, ok in part:
+                row = tk.Frame(self.mods_frame, bg=BG)
+                row.pack(fill="x")
+                tk.Label(row, text="✓" if ok else "·", bg=BG, fg=GOOD if ok else DIM, font=(FONT, 10, "bold"),
+                         width=2, anchor="w").pack(side="left")
+                tk.Label(row, text=tier, bg=BG, fg=GOOD if ok else MUTED, font=("Consolas", 9),
+                         width=6, anchor="w").pack(side="right")
+                tk.Label(row, text=text, bg=BG, fg=FG if ok else MUTED, font=(FONT, 9), anchor="w",
+                         justify="left", wraplength=WIDTH - 110).pack(side="left", fill="x")
 
+        self.step_card.pack(fill="x", padx=10, pady=(10, 0), before=self.status_lbl)
         self.step_lbl.configure(text=adv.step)
-        if adv.chance is None:
+        self._paint_step_icon(adv.step)
+        c = adv.chance
+        if c is None:
             self.chance_lbl.configure(text="")
-        elif adv.chance >= 1:
+            self.tries_lbl.configure(text="")
+        elif c >= 1:
             self.chance_lbl.configure(text="Гарантированно", fg=GOOD)
-        elif adv.chance > 0:
-            tries = max(1, round(1 / adv.chance))
-            self.chance_lbl.configure(text=f"Шанс: {adv.chance:.1%}   ·   в среднем ~{tries} попыт.",
-                                      fg=GOOD if adv.chance >= 0.2 else FG)
+            self.tries_lbl.configure(text="1 действие")
+        elif c > 0:
+            self.chance_lbl.configure(text=f"Шанс {c:.1%}", fg=GOOD if c >= 0.2 else FG)
+            self.tries_lbl.configure(text=f"в среднем ~{max(1, round(1 / c))} попыт.")
         else:
-            self.chance_lbl.configure(text="Шанс: 0% — так не получится", fg=WARN)
+            self.chance_lbl.configure(text="Шанс 0% — так не получится", fg=WARN)
+            self.tries_lbl.configure(text="")
+        self._chance = c
+        self.root.after(30, self._draw_bar)
         self.why_lbl.configure(text=adv.why)
         self.notes_lbl.configure(text="\n".join("• " + n for n in adv.notes))
         self.set_status("Скопируй следующий предмет: Ctrl+Alt+C")
+        self._remember_item(item, mods)
+        self._shown_at = time.time()
+        self._place_near_cursor()
+        self.root.lift()
+        self.root.attributes("-topmost", True)
+
+    def _paint_step_icon(self, step):
+        from poecraft import icons
+        st = icons.store()
+        name = st.find(step) if st else None
+        img = st.get(name, 36) if name else None
+        if img is not None:
+            self.step_icon.configure(image=img)
+            self.step_icon._img = img
+            self.step_icon.pack(side="left", padx=(0, 8), before=self.step_lbl)
+        else:
+            self.step_icon.pack_forget()
+
+    def _paint_head(self, bg, fg, line):
+        for w in self._drag_widgets:
+            w.configure(bg=bg)
+        for b in self.head_btns:
+            b.configure(bg=bg)
+        self.title_lbl.configure(fg=fg)
+        self.rarity_line.configure(bg=line)
+
+    def _draw_bar(self):
+        c = getattr(self, "_chance", None)
+        self.bar.delete("all")
+        if c is None:
+            return
+        w = max(1, self.bar.winfo_width())
+        self.bar.create_rectangle(0, 0, max(3, int(w * max(0.0, min(1.0, c)))), 5, fill=GOOD if c >= 1 else GOLD, width=0)
+
+    # ------------------------------------------------------------ как в APT: у курсора и автоскрытие
+    def _place_near_cursor(self):
+        if self.settings.get("overlay_position", "fixed") != "cursor":
+            return
+        self.root.update_idletasks()
+        px, py = self.root.winfo_pointerxy()
+        w, h = self.root.winfo_width(), self.root.winfo_reqheight()
+        sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+        # инвентарь справа — ставим карточку левее курсора, иначе правее
+        x = px - w - 24 if px > sw // 2 else px + 24
+        y = min(max(0, py - 40), max(0, sh - h - 40))
+        self.root.geometry(f"+{max(0, x)}+{y}")
+
+    def _hover(self, inside):
+        self._mouse_inside = inside
+
+    def _auto_hide(self):
+        secs = int(self.settings.get("overlay_autohide", 0) or 0)
+        shown = getattr(self, "_shown_at", None)
+        if (secs and shown and self.root.state() != "withdrawn" and not getattr(self, "_mouse_inside", False)
+                and time.time() - shown > secs):
+            from mainwin import popdown_open
+            if not popdown_open():
+                self.root.withdraw()
+                self._shown_at = None
+        self.root.after(500, self._auto_hide)
 
     def run(self):
         self.root.mainloop()

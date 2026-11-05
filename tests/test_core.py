@@ -135,3 +135,14 @@ def test_starter_goals_load_and_fit_base(data, path):
         pool = ModPool(data, b, g.raw.get("min_ilvl") or 84)
         for w in g.wanted:
             assert any(w.matches(e) for e in pool.available), f"{path.name}: {w.label} не выпадает на {b.name}"
+
+
+def test_icon_text_matching():
+    from poecraft.icons import find_all, find_in_text, resolve
+    names = ["Chaos Orb", "Eldritch Chaos Orb", "Exalted Orb", "Bound Fossil", "Pristine Fossil",
+             "Shrieking Essence of Anger"]
+    assert find_in_text("Спам: Shrieking Essence of Anger", names) == "Shrieking Essence of Anger"
+    assert find_all("Eldritch Chaos Orb, потом Exalted Orb", names) == ["Eldritch Chaos Orb", "Exalted Orb"]
+    assert find_all("Фоссилы: Bound Fossil + Pristine Fossil", names) == ["Bound Fossil", "Pristine Fossil"]
+    assert resolve("Crusader") == "Crusader's Exalted Orb"
+    assert resolve("Chaos") == "Chaos Orb"
