@@ -47,6 +47,12 @@ RARITY = {"Normal": ("#1f1d1a", "#c8c8c8"), "Magic": ("#161a2a", "#8888ff"),
           "Rare": ("#2a2410", "#f0dc78"), "Unique": ("#2a1a0e", "#c87c3c")}
 
 
+def resource(rel: str) -> str:
+    """Файл, упакованный в exe (PyInstaller кладёт их в _MEIPASS), или рядом с исходниками."""
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, rel)
+
+
 def load_settings() -> dict:
     try:
         return json.loads(SETTINGS.read_text(encoding="utf-8"))
@@ -68,6 +74,11 @@ class Overlay:
         i18n.set_lang(self.settings.get("ui_lang", "ru"))
         self.root = tk.Tk()
         self.root.title("PoE Craft Helper")
+        try:   # иконка окон и панели задач (общая для всех окон программы)
+            self._icon_img = tk.PhotoImage(file=resource("assets/icon64.png"))
+            self.root.iconphoto(True, self._icon_img)
+        except Exception:
+            pass
         self.root.overrideredirect(True)          # без рамки
         self.root.attributes("-topmost", True)    # поверх всех окон
         self.root.attributes("-alpha", self.settings.get("alpha", 0.92))

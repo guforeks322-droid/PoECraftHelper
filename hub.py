@@ -77,7 +77,16 @@ class HubWindow(tk.Toplevel):
     def _build(self):
         head = tk.Frame(self, bg=TITLE)
         head.pack(fill="x")
-        title = tk.Label(head, text="⚒  POE CRAFT HELPER", bg=TITLE, fg=GOLD, font=(FONT, 10, "bold"))
+        title = tk.Label(head, text="  POE CRAFT HELPER", bg=TITLE, fg=GOLD, font=(FONT, 10, "bold"),
+                         compound="left")
+        try:
+            from PIL import Image, ImageTk
+            from overlay import resource
+            im = Image.open(resource("assets/icon.png")).resize((20, 20), Image.LANCZOS)
+            self._title_icon = ImageTk.PhotoImage(im, master=self)
+            title.configure(image=self._title_icon)
+        except Exception:
+            title.configure(text="⚒  POE CRAFT HELPER")
         title.pack(side="left", padx=10, pady=6)
         ver = tk.Label(head, text=f"v{APP_VERSION}", bg=TITLE, fg=DIM, font=(FONT, 8))
         ver.pack(side="left")
@@ -474,6 +483,12 @@ class HubWindow(tk.Toplevel):
         if g:
             wanted = ", ".join(w.get("label") or w.get("mod_type") for w in g.raw.get("wanted", []))
             desc = (g.raw.get("description") or "").strip()
+            plan = g.raw.get("plan") or []
+            if plan:
+                from poecraft.plans import step_text
+                desc = "Рецепт: " + " → ".join(step_text(x).split("  ")[1 if x.get("if") else 0]
+                                               for x in plan[:6]) + (" …" if len(plan) > 6 else "") + \
+                       (f"\n{desc}" if desc else "")
             self.desc_lbl.configure(text=f"Моды: {wanted}" + (f"\n{desc}" if desc else ""))
 
     def _lib_activate(self):

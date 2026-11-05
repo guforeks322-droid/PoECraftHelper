@@ -72,7 +72,31 @@ def recipe_from_dict(d: dict) -> dict:
         "base": str(d.get("base", "")) or None,
         "min_ilvl": int(d["min_ilvl"]) if d.get("min_ilvl") else None,
         "wanted": out_w,
+        "plan": _clean_plan(d.get("plan")),
     }
+
+
+def _clean_plan(plan) -> list:
+    """Рецепт крафта (шаги с условиями) — только простые JSON-значения, не больше 30 шагов."""
+    if not isinstance(plan, list):
+        return []
+    out = []
+    for st in plan[:30]:
+        if not isinstance(st, dict) or not isinstance(st.get("do"), str):
+            continue
+        s = {"do": st["do"][:40]}
+        if isinstance(st.get("kw"), dict):
+            s["kw"] = {k: v for k, v in st["kw"].items() if isinstance(v, (str, int, float, list))}
+        for k in ("if", "until"):
+            if isinstance(st.get(k), dict):
+                s[k] = st[k]
+        if isinstance(st.get("max"), int):
+            s["max"] = max(1, min(20000, st["max"]))
+        e = st.get("else")
+        if e in ("next", "stop") or isinstance(e, int):
+            s["else"] = e
+        out.append(s)
+    return out
 
 
 def encode(recipe: dict) -> str:

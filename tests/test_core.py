@@ -228,3 +228,41 @@ def test_special_fossils():
     assert sum(m.fractured for m in em.mods) == 1 and em.state["split"]
     em.apply("fossils", fossils=[fos["Bloodstained Fossil"]])
     assert em.state["corrupted"]
+
+
+def test_trade_links():
+    import json, urllib.parse
+    from poecraft import trade
+    raw = {"result": [{"id": "explicit", "entries": [
+        {"id": "explicit.stat_3299347043", "text": "+# to maximum Life"},
+        {"id": "explicit.stat_3372524247", "text": "+#% to Fire Resistance"},
+        {"id": "explicit.stat_1940865751", "text": "Adds # to # Physical Damage"}]}]}
+    st = trade.stats_index(raw)
+    assert trade.normalize("+(130-144) to maximum Life") == trade.normalize("+140 to maximum Life") == "+# to maximum life"
+    q, miss = trade.mods_query("Stygian Vise", [("+(130-144) to maximum Life", trade.min_value("+(130-144) to maximum Life")),
+                                                ("+(36-41)% to Fire Resistance", 36), ("Something weird", None)], st)
+    assert [f["id"] for f in q["stats"][0]["filters"]] == ["explicit.stat_3299347043", "explicit.stat_3372524247"]
+    assert q["stats"][0]["filters"][0]["value"]["min"] == 130 and miss == ["Something weird"]
+    url = trade.search_url("Allflame", trade.base_query("Stygian Vise", 84))
+    assert url.startswith("https://www.pathofexile.com/trade/search/Allflame?q=")
+    body = json.loads(urllib.parse.unquote(url.split("?q=", 1)[1]))
+    assert body["query"]["type"] == "Stygian Vise" and body["query"]["filters"]["misc_filters"]["filters"]["ilvl"]["min"] == 84
+
+
+def test_plans_run():
+    from poecraft import plans
+    from poecraft.calc import Target
+    from poecraft.emulator import Emulator
+    from poecraft.prices import Prices
+    from poecraft.pool import ModPool
+    data = GameData()
+    em = Emulator(data, ModPool(data, data.bases["Stygian Vise"], 86), seed=1)
+    targets = [Target("prefix", "IncreasedLife", 5, "Жизнь"), Target("suffix", "FireResistance", 5, "Огонь")]
+    steps = plans.presets(len(targets))["Chaos до цели"]
+    r = plans.simulate(data, em, targets, steps, 20, Prices())
+    assert r["items"] == 20 and r["rate"] > 0.9 and r["avg_ops"] > 1
+    assert em.rarity == "Normal" and not em.mods          # исходный предмет не тронут
+    steps = plans.presets(len(targets))["Alt+Aug → Regal → Exalt"]
+    r = plans.simulate(data, em, targets, steps, 20, Prices())
+    assert r["items"] == 20 and not r["errors"], r
+    assert "пока не" in plans.step_text(steps[1])
