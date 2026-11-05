@@ -168,7 +168,7 @@ class HubWindow(tk.Toplevel):
         return b
 
     def _caption(self, parent, text):
-        tk.Label(parent, text=text.upper(), bg=parent["bg"], fg=MUTED, font=(FONT, 8, "bold"),
+        tk.Label(parent, text=i18n.t(text).upper(), bg=parent["bg"], fg=MUTED, font=(FONT, 8, "bold"),
                  anchor="w").pack(fill="x", pady=(12, 4))
 
     def refresh(self):
@@ -289,7 +289,7 @@ class HubWindow(tk.Toplevel):
         raw = g.raw
         tk.Label(inner, text=g.name, bg=TILE, fg=GOLD, font=(FONT, 12, "bold"), anchor="w",
                  justify="left", wraplength=380).pack(fill="x")
-        cls = recipes.CLASS_RU.get(raw.get("base_class") or "", raw.get("base_class") or "любой класс")
+        cls = recipes.class_name(raw.get("base_class"), "любой класс")
         meta = [cls]
         if raw.get("base"):
             meta.append(raw["base"])
@@ -395,8 +395,8 @@ class HubWindow(tk.Toplevel):
                      font=(FONT, 10))
         e.pack(side="left", fill="x", expand=True, ipady=5, padx=4)
         self.q.trace_add("write", lambda *a: self._fill_library())
-        self.cls_var = tk.StringVar(value="Все классы")
-        classes = ["Все классы"] + sorted({recipes.CLASS_RU.get(g.raw.get("base_class") or "", "Любой")
+        self.cls_var = tk.StringVar(value=i18n.t("Все классы"))
+        classes = [i18n.t("Все классы")] + sorted({recipes.class_name(g.raw.get("base_class"), "Любой")
                                            for _, g in self.app.goals})
         cb = ttk.Combobox(sr, textvariable=self.cls_var, values=classes, state="readonly", width=16,
                           style="G.TCombobox", font=(FONT, 9))
@@ -452,7 +452,7 @@ class HubWindow(tk.Toplevel):
         shown = 0
         for fname, g in self.app.goals:
             raw = g.raw
-            cls = recipes.CLASS_RU.get(raw.get("base_class") or "", "Любой")
+            cls = recipes.class_name(raw.get("base_class"), "Любой")
             hay = " ".join([g.name, cls, raw.get("author", ""), raw.get("base") or "",
                             " ".join(w.get("label", "") for w in raw.get("wanted", []))]).lower()
             if q and q not in hay:

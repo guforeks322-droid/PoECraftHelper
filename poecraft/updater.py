@@ -6,7 +6,7 @@ import json
 import re
 import urllib.request
 
-APP_VERSION = "0.21.0"
+APP_VERSION = "0.22.0"
 DEFAULT_REPO = "guforeks322-droid/PoECraftHelper"   # релизы с обновлениями
 
 
