@@ -191,6 +191,12 @@ class Overlay:
         self.notes_lbl = tk.Label(inner, text="", bg=CARD, fg=MUTED, font=(FONT, 9),
                                   anchor="w", justify="left", wraplength=WIDTH - 44)
         self.notes_lbl.pack(fill="x", pady=(4, 0))
+        emu = tk.Label(inner, text="⚒  Открыть в эмуляторе", bg=CARD, fg=MUTED, font=(FONT, 9), cursor="hand2",
+                       anchor="w")
+        emu.pack(fill="x", pady=(6, 0))
+        emu.bind("<Button-1>", lambda e: self.last_text and self.item_to_emulator(text=self.last_text))
+        emu.bind("<Enter>", lambda e: emu.configure(fg=GOLD))
+        emu.bind("<Leave>", lambda e: emu.configure(fg=MUTED))
 
         self.status_lbl = tk.Label(self.body, text="", bg=BG, fg=MUTED, font=(FONT, 8),
                                    anchor="w", justify="left", wraplength=WIDTH - 20)
@@ -309,6 +315,59 @@ class Overlay:
         self._load_goals()
         self.refresh_hub()
 
+    # ------------------------------------------------------------ предмет → эмулятор
+    def item_to_emulator(self, copy: bool = False, text: str | None = None):
+        """Скопировать предмет под курсором (по желанию) и открыть его в эмуляторе мастерской."""
+        if not self.data:
+            return self.set_status("Данные ещё загружаются, подожди пару секунд…")
+        if text:
+            return self._open_in_emulator(text)
+        try:
+            before = self.root.clipboard_get()
+        except tk.TclError:
+            before = ""
+        if copy:
+            from poecraft.hotkeys import send_copy
+            self._emu_wait = True
+            send_copy(advanced=True)
+            self._wait_clip(before, time.time())
+        else:
+            self._open_in_emulator(before if looks_like_item(before) else (self.last_text or ""))
+
+    def _wait_clip(self, before, t0):
+        try:
+            now = self.root.clipboard_get()
+        except tk.TclError:
+            now = ""
+        if now != before and looks_like_item(now):
+            self._emu_wait = False
+            self.last_clip = now          # оверлей не будет показывать этот же предмет
+            self.last_text = now
+            return self._open_in_emulator(now)
+        if time.time() - t0 < 1.0:
+            return self.root.after(40, lambda: self._wait_clip(before, t0))
+        self._emu_wait = False
+        # игра ничего не скопировала (курсор не на предмете) — берём то, что уже в буфере
+        if looks_like_item(now):
+            return self._open_in_emulator(now)
+        self.set_status("Наведи курсор на предмет в игре и нажми сочетание ещё раз.")
+
+    def _open_in_emulator(self, text):
+        if not text or not looks_like_item(text):
+            return self.set_status("В буфере нет предмета — скопируй его в игре (Ctrl+Alt+C).")
+        try:
+            win = getattr(self, "main_win", None)
+            if win is None or not win.winfo_exists():
+                self.open_main()
+                win = self.main_win
+            elif win.state() == "withdrawn":
+                win.show()
+            win.load_item_text(text)
+            win.lift()
+        except Exception as e:
+            traceback.print_exc()
+            self.set_status(f"Не удалось открыть в эмуляторе: {e}")
+
     def reopen_item(self, text: str):
         self.root.deiconify()
         self.root.attributes("-topmost", True)
@@ -360,6 +419,8 @@ class Overlay:
             self.open_settings()
         elif action == "hub":
             self.toggle_hub()
+        elif action == "to_emulator":
+            self.item_to_emulator(copy=self.settings.get("emu_send_copy", True))
 
     def open_settings(self, section: str = "hotkeys"):
         from settings_win import SettingsWindow
@@ -517,6 +578,8 @@ class Overlay:
         try:
             text = self.root.clipboard_get()
         except tk.TclError:
+            text = None
+        if getattr(self, "_emu_wait", False):
             text = None
         if text and text != self.last_clip:
             self.last_clip = text

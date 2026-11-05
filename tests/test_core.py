@@ -146,3 +146,25 @@ def test_icon_text_matching():
     assert find_all("Фоссилы: Bound Fossil + Pristine Fossil", names) == ["Bound Fossil", "Pristine Fossil"]
     assert resolve("Crusader") == "Crusader's Exalted Orb"
     assert resolve("Chaos") == "Chaos Orb"
+
+
+def test_emulator_load_item_from_game():
+    import pathlib
+    from poecraft.advisor import Advisor
+    from poecraft.emulator import Emulator
+    from poecraft.parser import parse_item
+    from poecraft.pool import ModPool
+    data = GameData()
+    adv = Advisor(data)
+    for name in ("5_rare_exalt.txt", "4_rare_bench.txt", "ru_belt.txt", "2_magic_one.txt"):
+        item = parse_item((pathlib.Path(__file__).parent.parent / "examples" / name).read_text(encoding="utf-8"))
+        base = data.find_base_any(item.base_name)
+        em = Emulator(data, ModPool(data, base, item.ilvl))
+        unknown = em.load_item(item, adv._match_mod)
+        assert em.rarity == item.rarity
+        assert len(em.mods) + len(unknown) == len(item.mods)
+        assert not unknown, (name, unknown)
+        # значения сохраняются как на предмете, а не перекатываются
+        for pm, m in zip(item.mods, em.mods):
+            assert m.text.split(" / ")[0].replace("+", "") in pm.lines[0].replace("+", "").replace("(", " (") or m.values
+        em.apply("exalt" if item.rarity == "Rare" else "augment") if len(em.mods) < 6 else None
