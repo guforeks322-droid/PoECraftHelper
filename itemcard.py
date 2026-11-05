@@ -278,7 +278,8 @@ class ItemCard(tk.Frame):
         offset = len(steps) - len(shown)
         if offset:
             tk.Label(strip, text=f"…{offset}", bg=BG, fg=DIM, font=(FONT, 8)).pack(side="left")
-        for i, (icon, label) in enumerate(shown):
+        for i, step in enumerate(shown):
+            icon, label = step[0], step[1]
             idx = offset + i
             img = st.get(icon, 22) if st and icon else None
             w = tk.Label(strip, image=img or "", text="" if img else (label or "?")[:3], bg="#1a1611", fg=FG,
@@ -308,8 +309,8 @@ class ItemCard(tk.Frame):
             l.pack(side="left", padx=(4, 0))
         if prices:
             total = sum(prices.get(k) * v for k, v in items)
-            tk.Label(row, text=f"≈ {total:,.0f}c ({total / prices.divine:.2f} div)".replace(",", " "),
-                     bg=BG, fg=MUTED, font=(FONT, 9)).pack(side="left", padx=8)
+            tk.Label(self.body, text=f"≈ {total:,.0f}c ({total / prices.divine:.2f} div)".replace(",", " "),
+                     bg=BG, fg=MUTED, font=(FONT, 9), anchor="w").pack(fill="x", padx=14)
 
     def _chances(self, ch):
         from mainwin import pct
