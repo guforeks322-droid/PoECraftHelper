@@ -797,6 +797,7 @@ class Overlay:
 
 
 def main():
+    sys.setswitchinterval(0.002)      # фоновые расчёты чаще отдают время окну
     Overlay().run()
 
 

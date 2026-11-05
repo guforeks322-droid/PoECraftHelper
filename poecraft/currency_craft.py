@@ -12,6 +12,7 @@ from functools import lru_cache
 from .data import GameData, ModDef
 from .pool import ModPool, PoolEntry
 from .prices import Prices
+from .pool import yield_ui
 
 RESONATORS = {1: "Primitive Chaotic Resonator", 2: "Potent Chaotic Resonator",
               3: "Powerful Chaotic Resonator", 4: "Prime Chaotic Resonator"}
@@ -185,6 +186,8 @@ def simulate(pool: ModPool, targets, fixed=None, seed=11, min_hits=300, max_tria
     while trials < max_trials and (hits < min_hits or trials < 10_000):
         for _ in range(5000):
             trials += 1
+            if not trials % 2000:
+                yield_ui()
             got = roll()
             if sum(1 for t in targets if any(t.ok(e) for e in got)) == need:
                 hits += 1

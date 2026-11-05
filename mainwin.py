@@ -223,6 +223,7 @@ class MainWindow(tk.Toplevel):
             self._fill_fossils()
             self._fill_essences()
             self._paint_influence()
+            self._paint_base_art()
             for w, n, sz in getattr(self, "_iconed_fixed", []):
                 if w.winfo_exists():
                     img = self._row_icon(n, sz)
@@ -235,6 +236,16 @@ class MainWindow(tk.Toplevel):
                 self._emu_render()
         except Exception:
             pass
+
+    def _paint_base_art(self, base=None):
+        base = base or (self.pool.base if self.pool else None)
+        st = icons.store()
+        img = None
+        if st and base:
+            dds = (self.data.base_raw.get(base.id, {}).get("visual_identity") or {}).get("dds_file", "")
+            img = st.base_art(base.id, dds, 42, 60)
+        self.base_art.configure(image=img or "", width=0 if img else 6)
+        self.base_art._img = img
 
     def _paint_influence(self):
         name = self.inf_var.get()
@@ -269,9 +280,13 @@ class MainWindow(tk.Toplevel):
         self.price_lbl = tk.Label(head, text="цены…", bg=BG2, fg=MUTED, font=(FONT, 8))
         self.price_lbl.pack(side="right", padx=8)
 
-        ctl = tk.Frame(self, bg=BG)
-        ctl.pack(fill="x", padx=10, pady=(8, 4))
-        tk.Label(ctl, text="База", bg=BG, fg=MUTED, font=(FONT, 9)).pack(side="left")
+        bar_ = tk.Frame(self, bg=BG1, highlightthickness=1, highlightbackground=LINE)
+        bar_.pack(fill="x", padx=8, pady=(8, 4))
+        ctl = tk.Frame(bar_, bg=BG1)
+        ctl.pack(fill="x", padx=6, pady=4)
+        self.base_art = tk.Label(ctl, bg=BG1, width=6)
+        self.base_art.pack(side="left", padx=(0, 8))
+        tk.Label(ctl, text="База", bg=BG1, fg=MUTED, font=(FONT, 9)).pack(side="left")
         self.base_var = tk.StringVar()
         self.base_box = ttk.Combobox(ctl, textvariable=self.base_var, values=self.base_names,
                                      style="D.TCombobox", width=30, font=(FONT, 10))
@@ -280,22 +295,22 @@ class MainWindow(tk.Toplevel):
         self.base_box.bind("<KeyRelease>", self._filter_bases)
         self.base_box.bind("<<ComboboxSelected>>", lambda e: self.load_pool())
         self.base_box.bind("<Return>", lambda e: self.load_pool())
-        tk.Label(ctl, text="ilvl", bg=BG, fg=MUTED, font=(FONT, 9)).pack(side="left")
+        tk.Label(ctl, text="ilvl", bg=BG1, fg=MUTED, font=(FONT, 9)).pack(side="left")
         self.ilvl_var = tk.StringVar(value=str(self.settings.get("main_ilvl", 84)))
         il = self._entry(ctl, self.ilvl_var, 5)
         il.pack(side="left", padx=(4, 10))
         il.bind("<Return>", lambda e: self.load_pool())
-        tk.Label(ctl, text="влияние", bg=BG, fg=MUTED, font=(FONT, 9)).pack(side="left")
+        tk.Label(ctl, text="влияние", bg=BG1, fg=MUTED, font=(FONT, 9)).pack(side="left")
         self.inf_var = tk.StringVar(value="нет")
         self.inf_box = ttk.Combobox(ctl, textvariable=self.inf_var, state="readonly", style="D.TCombobox",
                                     values=["нет"], width=11, font=(FONT, 9))
         popdown_on_top(self.inf_box)
         self.inf_box.pack(side="left", padx=(4, 2))
         self.inf_box.bind("<<ComboboxSelected>>", lambda e: (self._paint_influence(), self.load_pool()))
-        self.inf_icon = tk.Label(ctl, bg=BG)
+        self.inf_icon = tk.Label(ctl, bg=BG1)
         self.inf_icon.pack(side="left", padx=(0, 10))
         self._act(ctl, "Показать моды", self.load_pool).pack(side="left")
-        self.info_lbl = tk.Label(ctl, text="", bg=BG, fg=MUTED, font=(FONT, 9))
+        self.info_lbl = tk.Label(ctl, text="", bg=BG1, fg=MUTED, font=(FONT, 9))
         self.info_lbl.pack(side="left", padx=10)
 
         self.nb = ttk.Notebook(self, style="D.TNotebook")
@@ -462,136 +477,265 @@ class MainWindow(tk.Toplevel):
 
     # ------------------------------------------------------------ эссенции и фоссилы
     def _build_ef(self):
+        """Эссенции и фоссилы: выбор иконками, наглядный сдвиг шансов и карточка цены."""
+        from ui_cards import ScrollList
         f = self.tab_ef
-        top = tk.Frame(f, bg=BG)
-        top.pack(fill="x", padx=6, pady=(8, 4))
-        tk.Label(top, text="Выбери эссенцию ИЛИ до 4 фоссилов, затем «Посчитать» — для нужных модов из «Пула модов».",
-                 bg=BG, fg=MUTED, font=(FONT, 9)).pack(side="left")
-
-        panes = tk.Frame(f, bg=BG)
-        panes.pack(fill="both", expand=True)
-        panes.columnconfigure(0, weight=1, uniform="p")
-        panes.columnconfigure(1, weight=1, uniform="p")
-        panes.rowconfigure(1, weight=1)
-        tk.Label(panes, text="Эссенции для этой базы", bg=BG, fg=GOLD, font=(FONT, 10, "bold"),
-                 anchor="w").grid(row=0, column=0, sticky="we", padx=4)
-        tk.Label(panes, text="Фоссилы (клик по ☐)", bg=BG, fg=GOLD, font=(FONT, 10, "bold"),
-                 anchor="w").grid(row=0, column=1, sticky="we", padx=4)
-
-        def mk(parent, cols, widths, col):
-            fr = tk.Frame(parent, bg=BG)
-            fr.grid(row=1, column=col, sticky="nsew", padx=4)
-            tv = ttk.Treeview(fr, style="D.Treeview", columns=cols[1:], show="headings" if cols[0] is None else "tree headings",
-                              selectmode="browse", height=8)
-            if cols[0] is not None:
-                tv.heading("#0", text=cols[0], anchor="w")
-                tv.column("#0", width=widths[0], stretch=True)
-            for c, w in zip(cols[1:], widths[1:]):
-                tv.heading(c, text=c)
-                tv.column(c, width=w, anchor="w" if w > 80 else "center", stretch=w > 80)
-            sb = ttk.Scrollbar(fr, orient="vertical", command=tv.yview, style="D.Vertical.TScrollbar")
-            tv.configure(yscrollcommand=sb.set)
-            tv.pack(side="left", fill="both", expand=True)
-            sb.pack(side="right", fill="y")
-            return tv
-
-        self.ess_tv = mk(panes, ("Эссенция", "мод", "тир", "цена"), (190, 170, 40, 60), 0)
-        self.fos_tv = mk(panes, ("Фоссил", "✓", "эффект", "цена"), (150, 28, 190, 60), 1)
-        self.ess_tv.bind("<<TreeviewSelect>>", lambda e: self._ef_changed("ess"))
-        self.fos_tv.bind("<Button-1>", self._fossil_click)
         self.fos_sel: list[str] = []
+        self.ef_ess: str | None = None
         self.ess_list: dict[str, cc.Essence] = {}
         self.fos_list = {x.name: x for x in cc.fossils(self.data)}
-        self._fill_fossils()
 
-        row = tk.Frame(f, bg=BG)
-        row.pack(fill="x", padx=6, pady=6)
+        left = tk.Frame(f, bg=BG, width=372)
+        left.pack(side="left", fill="y", padx=(6, 6), pady=8)
+        left.pack_propagate(False)
+        self._cap(left, "Эссенции для этой базы")
+        self.ef_ess_grid = tk.Frame(left, bg=BG1, highlightthickness=1, highlightbackground=LINE)
+        self.ef_ess_grid.pack(fill="x", pady=(2, 2))
+        self.ef_tier_row = tk.Frame(left, bg=BG)
+        self.ef_tier_row.pack(fill="x", pady=(0, 8))
+        self._cap(left, "Фоссилы — до 4")
+        self.ef_fos_grid = tk.Frame(left, bg=BG1, highlightthickness=1, highlightbackground=LINE)
+        self.ef_fos_grid.pack(fill="x", pady=(2, 8))
+        self.ef_sel_lbl = tk.Label(left, text="ничего не выбрано", bg=BG, fg=MUTED, font=(FONT, 9), anchor="w",
+                                   justify="left", wraplength=360)
+        self.ef_sel_lbl.pack(fill="x")
+        row = tk.Frame(left, bg=BG)
+        row.pack(fill="x", pady=6)
         self._act(row, "Посчитать выбранное", self.calculate_ef).pack(side="left")
-        self._btn(row, "сбросить выбор", self._ef_clear).pack(side="left", padx=8)
-        self.ef_status = tk.Label(row, text="", bg=BG, fg=MUTED, font=(FONT, 9))
-        self.ef_status.pack(side="left", padx=6)
-        self.ef_shift = tk.Label(f, text="", bg=BG, fg=FG, font=(FONT, 9), anchor="w", justify="left")
-        self.ef_shift.pack(fill="x", padx=10)
+        self._btn(row, "сброс", self._ef_clear).pack(side="left", padx=8)
+        self.ef_status = tk.Label(left, text="", bg=BG, fg=MUTED, font=(FONT, 8), anchor="w", justify="left",
+                                  wraplength=360)
+        self.ef_status.pack(fill="x")
 
-        from ui_cards import ScrollList
-        self.ef_out = ScrollList(f)
-        self.ef_out.pack(fill="both", expand=True, padx=6, pady=(4, 6))
-        self.ef_out.message("Выбери эссенцию или до 4 фоссилов и нажми «Посчитать выбранное».")
+        right = tk.Frame(f, bg=BG)
+        right.pack(side="left", fill="both", expand=True, padx=(0, 6), pady=8)
+        self._cap(right, "Как сдвинулись шансы")
+        self.ef_shift_box = ScrollList(right)
+        self.ef_shift_box.configure(height=300)
+        self.ef_shift_box.pack(fill="both", expand=True, pady=(2, 8))
+        self.ef_shift = self.ef_shift_box          # совместимость со старым кодом
+        self._cap(right, "Цена крафта")
+        self.ef_out = ScrollList(right, height=170)
+        self.ef_out.pack(fill="x", pady=(2, 0))
+        self.ef_out.message("Выбери эссенцию или фоссилы и нажми «Посчитать выбранное».")
+        self._fill_fossils()
+        self._show_shift()
 
     def _price_txt(self, name):
         v = self.prices.get(name)
         return f"{v:.1f}c" if v and v < 10 else (f"{v:.0f}c" if v else "—")
 
+    def _ef_tile(self, parent, i, name, text, selected, cmd, tip, cols=9):
+        t = tk.Label(parent, text=text, bg=TILE, fg=MUTED, font=(FONT, 7), cursor="hand2", width=4, height=2,
+                     highlightthickness=2, highlightbackground=GOLD if selected else TILE)
+        t.grid(row=i // cols, column=i % cols, padx=1, pady=1)
+        img = self._row_icon(name, 30)
+        if img is not None:
+            t.configure(image=img, text="", width=34, height=34)
+            t._img = img
+        t.bind("<Button-1>", lambda e: cmd())
+        t.bind("<Enter>", lambda e: self.status.configure(text=tip, fg=MUTED))
+        return t
+
     def _fill_fossils(self):
-        tv = self.fos_tv
-        tv.delete(*tv.get_children())
-        for name, fo in self.fos_list.items():
-            img = self._row_icon(name)
-            tv.insert("", "end", iid=name, text=" " + name.replace(" Fossil", ""),
-                      values=("☑" if name in self.fos_sel else "☐", fo.describe, self._price_txt(name)),
-                      tags=("sel",) if name in self.fos_sel else (), **({"image": img} if img else {}))
-        tv.tag_configure("sel", foreground=GOLD)
+        g = getattr(self, "ef_fos_grid", None)
+        if g is None:
+            return
+        for w in g.winfo_children():
+            w.destroy()
+        for i, (name, fo) in enumerate(self.fos_list.items()):
+            self._ef_tile(g, i, name, name.replace(" Fossil", "")[:5], name in self.fos_sel,
+                          lambda n=name: self._fossil_toggle(n), f"{name}: {fo.describe} · {self._price_txt(name)}",
+                          cols=8)
+        self._ef_sel_paint()
 
     def _fill_essences(self):
-        tv = self.ess_tv
-        tv.delete(*tv.get_children())
+        g = getattr(self, "ef_ess_grid", None)
+        if g is None:
+            return
+        for w in g.winfo_children():
+            w.destroy()
         self.ess_list = {}
         if not self.pool:
+            tk.Label(g, text="выбери базу сверху", bg=BG1, fg=MUTED, font=(FONT, 9)).pack(padx=8, pady=8)
             return
+        # по одной иконке на вид эссенции; тир выбирается строкой ниже
+        order = {t: i for i, t in enumerate(icons.ESSENCE_TIERS)}
+        kinds: dict[str, list] = {}
         for e in cc.essences_for(self.data, self.pool.base.item_class):
             if e.max_ilvl and self.pool.ilvl > e.max_ilvl:
                 continue
-            fe = cc.essence_entry(self.pool, e.mod)
             self.ess_list[e.id] = e
-            img = self._row_icon(e.name)
-            tv.insert("", "end", iid=e.id, text=" " + e.name, values=(short(e.mod.text), f"T{fe.tier}",
-                      self._price_txt(e.name)), **({"image": img} if img else {}))
+            tier, _, kind = e.name.partition(" Essence of ")
+            if not kind:
+                tier, kind = "", e.name.replace("Essence of ", "")
+            kinds.setdefault(kind, []).append((order.get(tier, -1), e))
+        cur = self.ess_list.get(self.ef_ess) if self.ef_ess else None
+        cur_kind = cur.name.partition(" Essence of ")[2] or cur.name.replace("Essence of ", "") if cur else None
+        for i, (kind, lst) in enumerate(sorted(kinds.items())):
+            lst.sort(key=lambda x: x[0])
+            best = lst[0][1]
+            fe = cc.essence_entry(self.pool, best.mod)
+            self._ef_tile(g, i, best.name, kind[:5], kind == cur_kind, lambda x=best.id: self._essence_toggle(x),
+                          f"{kind}: {short(best.mod.text)} (лучший тир T{fe.tier}) · {self._price_txt(best.name)}",
+                          cols=8)
+        self._ess_kinds = kinds
+        tr = getattr(self, "ef_tier_row", None)
+        if tr is not None:
+            for w in tr.winfo_children():
+                w.destroy()
+            if cur_kind and cur_kind in kinds:
+                tk.Label(tr, text="тир:", bg=BG, fg=MUTED, font=(FONT, 8)).pack(side="left")
+                for _, e in kinds[cur_kind]:
+                    t = e.name.split(" Essence")[0] if " Essence of " in e.name else "—"
+                    b = tk.Label(tr, text=t, bg=BG, fg=GOLD if e.id == self.ef_ess else MUTED, font=(FONT, 8),
+                                 cursor="hand2", padx=3)
+                    b.pack(side="left")
+                    b.bind("<Button-1>", lambda ev, x=e.id: self._essence_pick_tier(x))
+        if self.ef_ess not in self.ess_list:
+            self.ef_ess = None
+        self._ef_sel_paint()
 
-    def _fossil_click(self, e):
-        iid = self.fos_tv.identify_row(e.y)
-        if not iid:
-            return
-        if iid in self.fos_sel:
-            self.fos_sel.remove(iid)
+    def _essence_pick_tier(self, eid):
+        self.ef_ess = eid
+        self._fill_essences()
+        self._show_shift()
+
+    def _essence_toggle(self, eid):
+        self.ef_ess = None if self.ef_ess == eid else eid
+        if self.ef_ess:
+            self.fos_sel.clear()
+            self._fill_fossils()
+        self._fill_essences()
+        self._show_shift()
+
+    def _fossil_toggle(self, name):
+        if name in self.fos_sel:
+            self.fos_sel.remove(name)
         elif len(self.fos_sel) < 4:
-            self.fos_sel.append(iid)
+            self.fos_sel.append(name)
         else:
             self.ef_status.configure(text="Максимум 4 фоссила (резонатор Prime).", fg=WARN)
-        if self.fos_sel and self.ess_tv.selection():
-            self.ess_tv.selection_remove(self.ess_tv.selection())
+        if self.fos_sel and self.ef_ess:
+            self.ef_ess = None
+            self._fill_essences()
         self._fill_fossils()
-        self._ef_changed("fos")
+        self._emu_fos_paint()
+        self._show_shift()
+
+    def _fossil_click(self, e):        # старый обработчик таблицы — больше не используется
         return "break"
 
     def _ef_clear(self):
         self.fos_sel.clear()
-        if self.ess_tv.selection():
-            self.ess_tv.selection_remove(self.ess_tv.selection())
+        self.ef_ess = None
         self._fill_fossils()
-        self.ef_shift.configure(text="")
+        self._fill_essences()
+        self._emu_fos_paint()
+        self._show_shift()
+
+    def _ef_sel_paint(self):
+        if not hasattr(self, "ef_sel_lbl"):
+            return
+        key = (self.ef_ess, tuple(self.fos_sel))
+        if getattr(self, "_ef_last_key", None) not in (None, key) and hasattr(self, "ef_out"):
+            self.ef_out.message("Выбор изменился — нажми «Посчитать выбранное».")
+        self._ef_last_key = key
+        if self.ef_ess and self.ef_ess in self.ess_list:
+            t = "Эссенция: " + self.ess_list[self.ef_ess].name
+        elif self.fos_sel:
+            t = "Фоссилы: " + ", ".join(n.replace(" Fossil", "") for n in self.fos_sel)
+        else:
+            t = "ничего не выбрано — клик по иконке"
+        self.ef_sel_lbl.configure(text=t, fg=GOLD if (self.ef_ess or self.fos_sel) else MUTED)
 
     def _ef_changed(self, what):
-        if what == "ess" and self.ess_tv.selection() and self.fos_sel:
-            self.fos_sel.clear()
-            self._fill_fossils()
         self._show_shift()
 
     def _targets(self):
         return [Target(k[0], k[1], v["max_tier"], v["label"]) for k, v in self.selected.items()]
 
     def _show_shift(self):
-        """Как фоссилы меняют шанс каждого нужного мода (доля веса среди префиксов/суффиксов)."""
-        if not self.pool or not self.fos_sel or not self.selected:
-            self.ef_shift.configure(text="")
+        """Наглядно: шанс каждого нужного мода «было → стало» и какие моды стали чаще, реже или пропали."""
+        box = getattr(self, "ef_shift_box", None)
+        if box is None:
             return
-        fp = cc.fossil_pool(self.data, self.pool, [self.fos_list[n] for n in self.fos_sel])
+        box.clear()
+        inner = box.inner
+        if not self.pool:
+            return box.message("Выбери базу сверху.")
+        ess = self.ess_list.get(self.ef_ess) if self.ef_ess else None
+        fos = [self.fos_list[n] for n in self.fos_sel]
+        if not ess and not fos:
+            return box.message("Кликни по эссенции или фоссилам слева — здесь будет видно, как меняются шансы "
+                               "нужных модов (отмечаются ☐ в «Пуле модов») и всего пула.")
+        base = self._calc_pool()
+        if fos:
+            after = cc.fossil_pool(self.data, base, fos)
+            forced = None
+        else:
+            forced = cc.essence_entry(base, ess.mod)
+            import copy as _c
+            after = _c.copy(base)
+            after.available = [e for e in base.available if not set(e.mod.groups) & set(ess.mod.groups)]
 
-        def share(pool, t):
-            tot = sum(e.weight for e in pool.available if e.mod.kind == t.kind)
-            w = sum(e.weight for e in pool.available if t.ok(e))
-            return w / tot if tot else 0
-        lines = [f"{t.label}:  {pct(share(self.pool, t))} → {pct(share(fp, t))}" for t in self._targets()]
-        self.ef_shift.configure(text="Шанс среди своего типа: " + "   ·   ".join(lines))
+        def shares(pool):
+            out, tot = {}, {"prefix": 0, "suffix": 0}
+            for e in pool.available:
+                tot[e.mod.kind] += e.weight
+                k = (e.mod.kind, e.mod.type)
+                out[k] = out.get(k, 0) + e.weight
+            return {k: w / tot[k[0]] if tot[k[0]] else 0 for k, w in out.items()}
+        s0, s1 = shares(base), shares(after)
+        from ui_cards import bar
+        bg = inner["bg"]
+        if forced is not None:
+            tk.Label(inner, text=f"Гарантирован:  {short(ess.mod.text)}  (T{forced.tier})", bg=bg, fg=GOOD,
+                     font=(FONT, 10, "bold"), anchor="w").pack(fill="x", padx=12, pady=(10, 2))
+        targets = self._targets()
+        if targets:
+            tk.Label(inner, text="НУЖНЫЕ МОДЫ — шанс среди своего типа", bg=bg, fg=DIM, font=(FONT, 7, "bold"),
+                     anchor="w").pack(fill="x", padx=12, pady=(10, 2))
+            for t in targets:
+                ok_forced = forced is not None and t.ok(forced)
+                b0 = sum(e.weight for e in base.available if t.ok(e))
+                tot0 = sum(e.weight for e in base.available if e.mod.kind == t.kind)
+                b1 = sum(e.weight for e in after.available if t.ok(e))
+                tot1 = sum(e.weight for e in after.available if e.mod.kind == t.kind)
+                p0, p1 = (b0 / tot0 if tot0 else 0), (1.0 if ok_forced else (b1 / tot1 if tot1 else 0))
+                r = tk.Frame(inner, bg=bg)
+                r.pack(fill="x", padx=12, pady=2)
+                tk.Label(r, text=t.label, bg=bg, fg=FG, font=(FONT, 9), width=22, anchor="w").pack(side="left")
+                col = tk.Frame(r, bg=bg)
+                col.pack(side="left")
+                bar(col, p0, 170, color="#6e6356").pack(anchor="w", pady=1)
+                bar(col, p1, 170, color=GOOD if p1 > p0 else (WARN if p1 < p0 else GOLD)).pack(anchor="w", pady=1)
+                arrow = "гарантирован" if ok_forced else f"{pct(p0)} → {pct(p1)}"
+                fg = GOOD if p1 > p0 * 1.05 else (WARN if p1 < p0 * 0.95 else FG)
+                tk.Label(r, text=arrow, bg=bg, fg=fg, font=(FONT, 9, "bold"), anchor="w").pack(side="left", padx=10)
+        # весь пул: что выросло/упало сильнее всего
+        names = {(e.mod.kind, e.mod.type): short(e.mod.text) for e in base.available}
+        changes = []
+        for k, v0 in s0.items():
+            v1 = s1.get(k, 0)
+            if v0 > 0:
+                changes.append((v1 / v0, k, v0, v1))
+        up = sorted([c for c in changes if c[0] > 1.05], reverse=True)[:6]
+        down = sorted([c for c in changes if 0 < c[0] < 0.95])[:6]
+        gone = [c for c in changes if c[0] == 0][:8]
+        for title, items, fg in (("ЧАЩЕ", up, GOOD), ("РЕЖЕ", down, GOLD), ("ПРОПАЛИ ИЗ ПУЛА", gone, WARN)):
+            if not items:
+                continue
+            tk.Label(inner, text=title, bg=bg, fg=DIM, font=(FONT, 7, "bold"), anchor="w").pack(fill="x", padx=12,
+                                                                                              pady=(10, 2))
+            for ratio, k, v0, v1 in items:
+                r = tk.Frame(inner, bg=bg)
+                r.pack(fill="x", padx=12)
+                tk.Label(r, text=("П " if k[0] == "prefix" else "С ") + names.get(k, k[1]), bg=bg, fg=FG,
+                         font=(FONT, 9), anchor="w").pack(side="left", fill="x", expand=True)
+                txt = "✕" if v1 == 0 else f"×{ratio:.1f}  ({pct(v0)} → {pct(v1)})"
+                tk.Label(r, text=txt, bg=bg, fg=fg, font=(FONT, 9)).pack(side="right")
+        box.finish()
 
     def calculate_ef(self):
         if not self.pool or not self.selected:
@@ -599,7 +743,7 @@ class MainWindow(tk.Toplevel):
             return
         targets = self._targets()
         pool = self._calc_pool()
-        ess = self.ess_list.get(self.ess_tv.selection()[0]) if self.ess_tv.selection() else None
+        ess = self.ess_list.get(self.ef_ess) if self.ef_ess else None
         fos = [self.fos_list[n] for n in self.fos_sel]
         if not ess and not fos:
             self.ef_status.configure(text="Выбери эссенцию или фоссилы.", fg=WARN)
@@ -1927,6 +2071,7 @@ class MainWindow(tk.Toplevel):
             self.blocked = set()
             self._blocked_base = base.name
         self.table = self._table_with_blocks()
+        self._paint_base_art(base)
         self.settings.update(main_base=base.name, main_ilvl=ilvl)
         self._save_settings(self.settings)
         cls = recipes.CLASS_RU.get(base.item_class, base.item_class) if i18n.lang() == "ru" else base.item_class
@@ -2121,6 +2266,8 @@ class MainWindow(tk.Toplevel):
             x = tk.Label(r, text="✕", bg=BG1, fg=DIM, font=(FONT, 9), cursor="hand2", padx=4)
             x.pack(side="left")
             x.bind("<Button-1>", lambda e, key=k: self._unselect(key))
+        if hasattr(self, "ef_shift_box"):
+            self._show_shift()
 
     def _unselect(self, key):
         self.selected.pop(key, None)

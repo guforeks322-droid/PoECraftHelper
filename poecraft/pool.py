@@ -107,3 +107,9 @@ class ModPool:
         rng = random.Random(seed)
         hits = sum(1 for _ in range(trials) if goal_fn(self.roll(rarity, rng)))
         return hits / trials
+
+
+def yield_ui():
+    """Короткая пауза в долгих симуляциях (они идут в фоновом потоке): отдаём GIL, чтобы окно не замирало."""
+    import time
+    time.sleep(0.003)

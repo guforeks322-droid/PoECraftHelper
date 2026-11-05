@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from .pool import ModPool, PoolEntry
 from .prices import Prices
+from .pool import yield_ui
 
 TRIALS = 20000
 
@@ -102,6 +103,8 @@ def method_chaos(pool: ModPool, targets: list[Target], prices: Prices, rng) -> d
     while trials < 300_000 and (hits < 400 or trials < TRIALS):
         for _ in range(10000):
             trials += 1
+            if not trials % 2000:
+                yield_ui()
             if len(_hits(roll(), targets)) == need:
                 hits += 1
     p = hits / trials
