@@ -104,6 +104,7 @@ class ItemCard(tk.Frame):
 
     # ------------------------------------------------------------ отрисовка
     def render(self, em, targets=(), prices=None, steps=(), chances=None):
+        """steps/chances больше не рисуются в карточке — они справа (журнал и цели)."""
         if em is None:
             self._prev = None
             return self.empty()
@@ -205,10 +206,7 @@ class ItemCard(tk.Frame):
 
         # история, потрачено, шансы
         self._sep(border)
-        self._history(steps)
         self._spent(em, prices)
-        if chances:
-            self._chances(chances)
 
     @staticmethod
     def _kind_of(mid, em):
@@ -312,32 +310,35 @@ class ItemCard(tk.Frame):
             tk.Label(self.body, text=f"≈ {total:,.0f}c ({total / prices.divine:.2f} div)".replace(",", " "),
                      bg=BG, fg=MUTED, font=(FONT, 9), anchor="w").pack(fill="x", padx=14)
 
-    def _chances(self, ch):
-        from mainwin import pct
-        box = tk.Frame(self.body, bg=BG)
-        box.pack(fill="x", padx=14, pady=(4, 8))
-        done = ch["have"] >= ch["need"]
-        tk.Label(box, text=f"Цели: {ch['have']}/{ch['need']}" + ("  — всё на месте!" if done else ""),
-                 bg=BG, fg=GOOD if done else GOLD, font=(FONT, 9, "bold"), anchor="w").pack(fill="x")
-        if not done:
-            tk.Label(box, text="не хватает: " + ", ".join(ch["missing"]), bg=BG, fg=MUTED, font=(FONT, 9),
-                     anchor="w", justify="left", wraplength=420).pack(fill="x")
-            for key, label in (("augment", "Augmentation"), ("regal", "Regal"), ("exalt", "Exalt"),
-                               ("exalt_blocked", "Exalt с блоком слота"),
-                               ("exalt_no_attack", "Exalt + «Cannot roll Attack»"),
-                               ("exalt_no_caster", "Exalt + «Cannot roll Caster»")):
-                if key in ch:
-                    r = tk.Frame(box, bg=BG)
-                    r.pack(fill="x")
-                    tk.Label(r, text=label, bg=BG, fg=MUTED, font=(FONT, 9), width=24, anchor="w").pack(side="left")
-                    cv = tk.Canvas(r, width=90, height=6, bg="#2a241c", highlightthickness=0, bd=0)
-                    cv.pack(side="left", pady=6)
-                    cv.create_rectangle(0, 0, max(2, int(90 * min(1, ch[key]))), 6,
-                                        fill=GOOD if ch[key] >= 0.2 else GOLD, width=0)
-                    tk.Label(r, text=pct(ch[key]), bg=BG, fg=GOOD if ch[key] >= 0.2 else FG,
-                             font=(FONT, 9)).pack(side="left", padx=6)
-
     def _tip(self, text):
         fn = getattr(self, "on_tip", None)
         if fn:
             fn(text)
+
+
+def render_chances(box, ch, bg=BG):
+    """Блок «Цели»: сколько нужных модов уже есть, чего не хватает и шансы следующих шагов полосками."""
+    from mainwin import pct
+    done = ch["have"] >= ch["need"]
+    pad = tk.Frame(box, bg=bg)
+    pad.pack(fill="x", padx=8, pady=6)
+    tk.Label(pad, text=f"{ch['have']}/{ch['need']} нужных модов" + ("  — всё на месте!" if done else ""),
+             bg=bg, fg=GOOD if done else GOLD, font=(FONT, 10, "bold"), anchor="w").pack(fill="x")
+    if done:
+        return
+    tk.Label(pad, text="не хватает: " + ", ".join(ch["missing"]), bg=bg, fg=MUTED, font=(FONT, 9),
+             anchor="w", justify="left", wraplength=300).pack(fill="x", pady=(0, 4))
+    for key, label in (("augment", "Augmentation"), ("regal", "Regal"), ("exalt", "Exalt"),
+                       ("exalt_blocked", "Exalt с блоком слота"),
+                       ("exalt_no_attack", "Exalt + Cannot roll Attack"),
+                       ("exalt_no_caster", "Exalt + Cannot roll Caster")):
+        if key in ch:
+            r = tk.Frame(pad, bg=bg)
+            r.pack(fill="x")
+            tk.Label(r, text=label, bg=bg, fg=FG, font=(FONT, 9), width=24, anchor="w").pack(side="left")
+            v = ch[key]
+            tk.Label(r, text=pct(v), bg=bg, fg=GOOD if v >= 0.2 else FG, font=(FONT, 9), width=6,
+                     anchor="e").pack(side="right")
+            cv = tk.Canvas(r, width=70, height=6, bg="#2a241c", highlightthickness=0, bd=0)
+            cv.pack(side="right", pady=6)
+            cv.create_rectangle(0, 0, max(2, int(70 * min(1, v))), 6, fill=GOOD if v >= 0.2 else GOLD, width=0)
