@@ -56,8 +56,17 @@ class ItemCard(tk.Frame):
         self.on_rewind = on_rewind
         self._prev: dict | None = None
         self._prev_key = None
-        self.body = tk.Frame(self, bg=BG)
-        self.body.pack(fill="both", expand=True)
+        # карточка прокручивается колесом, если модов и пометок много
+        self._cv = tk.Canvas(self, bg=BG, highlightthickness=0, bd=0)
+        self._cv.pack(fill="both", expand=True)
+        self.body = tk.Frame(self._cv, bg=BG)
+        self._win = self._cv.create_window(0, 0, window=self.body, anchor="nw")
+        self.body.bind("<Configure>", lambda e: self._cv.configure(scrollregion=self._cv.bbox("all")))
+        self._cv.bind("<Configure>", lambda e: self._cv.itemconfigure(self._win, width=e.width))
+        for w in (self._cv, self.body):
+            w.bind("<MouseWheel>", self._wheel)
+            w.bind("<Button-4>", lambda e: self._cv.yview_scroll(-2, "units"))
+            w.bind("<Button-5>", lambda e: self._cv.yview_scroll(2, "units"))
         self.empty()
 
     # ------------------------------------------------------------ служебное
@@ -135,6 +144,21 @@ class ItemCard(tk.Frame):
             mp = ms = 1
         sub = f"ilvl {em.pool.ilvl}  ·  префиксы {len(em.prefixes)}/{mp}  ·  суффиксы {len(em.suffixes)}/{ms}"
         tk.Label(head, text=sub, bg=head_bg, fg=MUTED, font=(FONT, 8)).pack(pady=(0, 6))
+        st_ = getattr(em, "state", {})
+        flags = []
+        if st_.get("catalyst"):
+            flags.append((f"Качество {st_.get('quality', 0)}% · {st_['catalyst'].replace(' Catalyst', '')}", GOLD))
+        if st_.get("split"):
+            flags.append(("Split", MUTED))
+        if st_.get("imprint"):
+            flags.append(("есть отпечаток", MUTED))
+        if st_.get("corrupted"):
+            flags.append(("Осквернён", "#d24a4a"))
+        if flags:
+            fr = tk.Frame(head, bg=head_bg)
+            fr.pack(pady=(0, 6))
+            for t, c in flags:
+                tk.Label(fr, text=t, bg=head_bg, fg=c, font=(FONT, 8, "bold")).pack(side="left", padx=5)
 
         # картинка базы + иконки влияний
         raw = self.data.base_raw.get(base.id, {})
@@ -172,6 +196,8 @@ class ItemCard(tk.Frame):
             if e:
                 dom = "  ◆" if em.dominance() == side else ""
                 impl.append((f"{e.text}   [{ttl} · {inf.ELDRITCH_TIERS[e.level]}]{dom}", CRAFT_FG))
+        for n in st_.get("notes", []):
+            impl.append((n, "#d24a4a" if n.startswith("Vaal") else MUTED))
         if impl:
             self._sep(border)
             for t, c in impl:
@@ -209,6 +235,10 @@ class ItemCard(tk.Frame):
         self._sep(border)
         self._spent(em, prices)
 
+    def _wheel(self, e):
+        if self.body.winfo_reqheight() > self._cv.winfo_height():
+            self._cv.yview_scroll(-1 if e.delta > 0 else 1, "units")
+
     def _bind_click(self):
         """Клик по любому месту предмета — применить выбранный метод (как в игре: валюта → предмет)."""
         fn = getattr(self, "on_click", None)
@@ -218,6 +248,9 @@ class ItemCard(tk.Frame):
         def walk(w):
             try:
                 w.bind("<Button-1>", lambda e: fn(), add="+")
+                w.bind("<MouseWheel>", self._wheel, add="+")
+                w.bind("<Button-4>", lambda e: self._cv.yview_scroll(-2, "units"), add="+")
+                w.bind("<Button-5>", lambda e: self._cv.yview_scroll(2, "units"), add="+")
                 w.configure(cursor="hand2")
             except tk.TclError:
                 pass
@@ -226,7 +259,7 @@ class ItemCard(tk.Frame):
         for c in self.body.winfo_children():     # детей пересоздаём при каждой отрисовке — без дублей
             walk(c)
         if not getattr(self, "_self_bound", False):
-            for w in (self, self.body):
+            for w in (self, self.body, self._cv):
                 w.bind("<Button-1>", lambda e: fn())
             self._self_bound = True
 

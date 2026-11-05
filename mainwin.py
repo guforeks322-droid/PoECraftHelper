@@ -230,6 +230,7 @@ class MainWindow(tk.Toplevel):
                         w.configure(image=img, text="", width=sz + 4, height=sz + 4)
                         w._img = img
             if self.emu:
+                self._emu_lists()
                 self.emu_card._prev = None
                 self._emu_render()
         except Exception:
@@ -354,9 +355,22 @@ class MainWindow(tk.Toplevel):
         popdown_on_top(cb)
         cb.pack(side="left")
         cb.bind("<<ComboboxSelected>>", lambda e: self.load_pool())
-        self.pool_hint = tk.Label(top, text="Клик по ☐ — нужен мод · по «до T» — худший тир · двойной клик — тиры",
-                                  bg=BG, fg=MUTED, font=(FONT, 8))
-        self.pool_hint.pack(side="left", padx=10)
+        # сводка как на Craft of Exile: сколько групп, веса, цели, блокировки
+        self.pool_stats = tk.Frame(self.tab_pool, bg=BG)
+        self.pool_stats.pack(fill="x", padx=4, pady=(2, 6))
+        self._stat_lbls = {}
+        for key, cap in (("groups", "групп модов"), ("pw", "вес префиксов"), ("sw", "вес суффиксов"),
+                         ("sel", "нужных модов"), ("blk", "заблокировано")):
+            c = tk.Frame(self.pool_stats, bg=BG1, highlightthickness=1, highlightbackground=LINE)
+            c.pack(side="left", padx=(0, 6), ipadx=8)
+            v = tk.Label(c, text="—", bg=BG1, fg=GOLD if key in ("sel",) else FG, font=(FONT, 12, "bold"))
+            v.pack(anchor="w", padx=8, pady=(4, 0))
+            tk.Label(c, text=cap, bg=BG1, fg=MUTED, font=(FONT, 8)).pack(anchor="w", padx=8, pady=(0, 4))
+            self._stat_lbls[key] = v
+        self.pool_hint = tk.Label(self.pool_stats, text="☐ — нужен мод · «до T» — худший тир · двойной клик — тиры\n"
+                                                        "правый клик — заблокировать мод (уйдёт из пула и шансов)",
+                                  bg=BG, fg=MUTED, font=(FONT, 8), justify="left")
+        self.pool_hint.pack(side="right", padx=6)
 
         cols = tk.Frame(self.tab_pool, bg=BG)
         cols.pack(fill="both", expand=True)
@@ -364,9 +378,11 @@ class MainWindow(tk.Toplevel):
         cols.columnconfigure(1, weight=1, uniform="c")
         cols.rowconfigure(1, weight=1)
         self.trees = {}
-        for i, (kind, name) in enumerate((("prefix", "Префиксы"), ("suffix", "Суффиксы"))):
-            lbl = tk.Label(cols, text=name, bg=BG, fg=GOLD, font=(FONT, 10, "bold"), anchor="w")
+        self._pool_caps = {}
+        for i, (kind, name) in enumerate((("prefix", "ПРЕФИКСЫ"), ("suffix", "СУФФИКСЫ"))):
+            lbl = tk.Label(cols, text=name, bg=BG, fg=GOLD, font=(FONT, 9, "bold"), anchor="w")
             lbl.grid(row=0, column=i, sticky="we", padx=4)
+            self._pool_caps[kind] = lbl
             fr = tk.Frame(cols, bg=BG)
             fr.grid(row=1, column=i, sticky="nsew", padx=4, pady=(0, 4))
             tv = ttk.Treeview(fr, style="D.Treeview", columns=("chk", "all", "kind", "bar", "tier"),
@@ -392,49 +408,57 @@ class MainWindow(tk.Toplevel):
             tv.pack(side="left", fill="both", expand=True)
             sb.pack(side="right", fill="y")
             tv.bind("<Button-1>", lambda e, t=tv: self._tree_click(e, t))
+            tv.bind("<Button-3>", lambda e, t=tv: self._tree_block(e, t))
+            tv.tag_configure("blocked", foreground="#5a5248", font=(FONT, 9, "overstrike"))
             self.trees[kind] = tv
 
     def _build_calc(self):
+        """Калькулятор: слева цели и настройки, справа карточки методов (как сравнение на Craft of Exile)."""
+        from ui_cards import ScrollList
         f = self.tab_calc
-        tk.Label(f, text="Нужные моды (выбираются во вкладке «Пул модов»):", bg=BG, fg=MUTED,
-                 font=(FONT, 9), anchor="w").pack(fill="x", padx=6, pady=(8, 2))
-        self.targets_lbl = tk.Label(f, text="", bg=BG, fg=FG, font=(FONT, 9), anchor="w", justify="left")
-        self.targets_lbl.pack(fill="x", padx=12)
-        row = tk.Frame(f, bg=BG)
-        row.pack(fill="x", padx=6, pady=6)
-        self._act(row, "Посчитать", self.calculate).pack(side="left")
+        left = tk.Frame(f, bg=BG, width=300)
+        left.pack(side="left", fill="y", padx=(6, 6), pady=8)
+        left.pack_propagate(False)
+        self._cap(left, "Цели")
+        self.targets_box = tk.Frame(left, bg=BG1, highlightthickness=1, highlightbackground=LINE)
+        self.targets_box.pack(fill="x", pady=(2, 10))
+        self.targets_lbl = tk.Label(self.targets_box, text="", bg=BG1)   # совместимость
+        self._cap(left, "Методы")
+        opts = tk.Frame(left, bg=BG1, highlightthickness=1, highlightbackground=LINE)
+        opts.pack(fill="x", pady=(2, 10))
+        tk.Label(opts, text="Всегда: Alt+Aug, Alt→Regal, Chaos", bg=BG1, fg=MUTED, font=(FONT, 9),
+                 anchor="w").pack(fill="x", padx=8, pady=(6, 2))
         self.use_ess = tk.BooleanVar(value=True)
         self.use_fos = tk.BooleanVar(value=True)
         self.use_hv = tk.BooleanVar(value=True)
         for text, var in (("+ эссенции", self.use_ess), ("+ фоссилы", self.use_fos), ("+ Harvest", self.use_hv)):
-            tk.Checkbutton(row, text=text, variable=var, bg=BG, fg=FG, selectcolor=BG2, activebackground=BG,
-                           activeforeground=GOLD, font=(FONT, 9), highlightthickness=0, bd=0).pack(side="left", padx=(10, 0))
-        self.calc_status = tk.Label(row, text="", bg=BG, fg=MUTED, font=(FONT, 9))
-        self.calc_status.pack(side="left", padx=10)
-
-        self.out = tk.Text(f, bg=BG1, fg=FG, relief="flat", wrap="word", font=(FONT, 10), height=14,
-                           highlightthickness=1, highlightbackground=LINE, padx=10, pady=8, cursor="arrow")
-        self.out.pack(fill="both", expand=True, padx=6)
-        self.out.tag_configure("h", foreground=GOLD, font=(FONT, 11, "bold"))
-        self.out.tag_configure("best", foreground=GOOD, font=(FONT, 9, "bold"))
-        self.out.tag_configure("big", foreground=FG, font=(FONT, 13, "bold"))
-        self.out.tag_configure("m", foreground=MUTED, font=(FONT, 9))
-        self.out.tag_configure("bad", foreground=WARN)
-        self.out.configure(state="disabled")
-
-        sv = tk.Frame(f, bg=BG)
-        sv.pack(fill="x", padx=6, pady=8)
-        tk.Label(sv, text="Сохранить как крафт:", bg=BG, fg=GOLD, font=(FONT, 9, "bold")).pack(side="left")
+            tk.Checkbutton(opts, text=text, variable=var, bg=BG1, fg=FG, selectcolor=BG2, activebackground=BG1,
+                           activeforeground=GOLD, font=(FONT, 9), highlightthickness=0, bd=0,
+                           anchor="w").pack(fill="x", padx=8)
+        tk.Frame(opts, bg=BG1, height=6).pack()
+        self._act(left, "Посчитать", self.calculate).pack(fill="x")
+        self.calc_status = tk.Label(left, text="", bg=BG, fg=MUTED, font=(FONT, 8), anchor="w", justify="left",
+                                    wraplength=290)
+        self.calc_status.pack(fill="x", pady=(4, 10))
+        self._cap(left, "Сохранить как крафт")
+        sv = tk.Frame(left, bg=BG1, highlightthickness=1, highlightbackground=LINE)
+        sv.pack(fill="x", pady=(2, 0))
         self.goal_name = tk.StringVar()
-        self._entry(sv, self.goal_name, 30).pack(side="left", padx=6)
-        self._act(sv, "Сохранить и получить код", self.save_goal).pack(side="left")
+        self._entry(sv, self.goal_name, 30).pack(fill="x", padx=8, pady=(8, 4))
+        self._act(sv, "Сохранить и получить код", self.save_goal).pack(fill="x", padx=8)
         self.code_var = tk.StringVar()
-        cr = tk.Frame(f, bg=BG)
-        cr.pack(fill="x", padx=6, pady=(0, 6))
-        self.code_entry = tk.Entry(cr, textvariable=self.code_var, bg=BG2, fg=GOOD, relief="flat",
-                                   readonlybackground=BG2, state="readonly", font=("Consolas", 9))
-        self.code_entry.pack(side="left", fill="x", expand=True)
-        self._btn(cr, "скопировать", self.copy_code).pack(side="left", padx=4)
+        self.code_entry = tk.Entry(sv, textvariable=self.code_var, bg=BG2, fg=GOOD, relief="flat",
+                                   readonlybackground=BG2, state="readonly", font=("Consolas", 8))
+        self.code_entry.pack(fill="x", padx=8, pady=(6, 2))
+        self._btn(sv, "скопировать код", self.copy_code).pack(anchor="e", padx=4, pady=(0, 6))
+
+        right = tk.Frame(f, bg=BG)
+        right.pack(side="left", fill="both", expand=True, padx=(0, 6), pady=8)
+        self._cap(right, "Сравнение методов")
+        self.out = ScrollList(right)
+        self.out.pack(fill="both", expand=True, pady=(2, 0))
+        self.out.message("Отметь нужные моды во вкладке «Пул модов» и нажми «Посчитать» — здесь появятся "
+                         "все способы с ценой, шансом и расходом валюты, самый дешёвый — первым.")
 
     # ------------------------------------------------------------ эссенции и фоссилы
     def _build_ef(self):
@@ -489,14 +513,10 @@ class MainWindow(tk.Toplevel):
         self.ef_shift = tk.Label(f, text="", bg=BG, fg=FG, font=(FONT, 9), anchor="w", justify="left")
         self.ef_shift.pack(fill="x", padx=10)
 
-        self.ef_out = tk.Text(f, bg=BG1, fg=FG, relief="flat", wrap="word", font=(FONT, 10), height=8,
-                              highlightthickness=1, highlightbackground=LINE, padx=10, pady=8, cursor="arrow")
+        from ui_cards import ScrollList
+        self.ef_out = ScrollList(f)
         self.ef_out.pack(fill="both", expand=True, padx=6, pady=(4, 6))
-        for tag, kw in (("h", dict(foreground=GOLD, font=(FONT, 11, "bold"))), ("best", dict(foreground=GOOD, font=(FONT, 9, "bold"))),
-                        ("big", dict(foreground=FG, font=(FONT, 13, "bold"))), ("m", dict(foreground=MUTED, font=(FONT, 9))),
-                        ("bad", dict(foreground=WARN))):
-            self.ef_out.tag_configure(tag, **kw)
-        self.ef_out.configure(state="disabled")
+        self.ef_out.message("Выбери эссенцию или до 4 фоссилов и нажми «Посчитать выбранное».")
 
     def _price_txt(self, name):
         v = self.prices.get(name)
@@ -578,7 +598,7 @@ class MainWindow(tk.Toplevel):
             self.ef_status.configure(text="Сначала выбери базу и отметь нужные моды в «Пуле модов».", fg=WARN)
             return
         targets = self._targets()
-        pool = self.pool
+        pool = self._calc_pool()
         ess = self.ess_list.get(self.ess_tv.selection()[0]) if self.ess_tv.selection() else None
         fos = [self.fos_list[n] for n in self.fos_sel]
         if not ess and not fos:
@@ -655,14 +675,14 @@ class MainWindow(tk.Toplevel):
         for key, icon, label in (("ess", "Deafening Essence of Greed", "Эссенции"), ("fos", "Pristine Fossil", "Фоссилы"),
                                  ("inf", "Crusader", "Влияние"), ("eld", "Exarch", "Eldritch"),
                                  ("hv", "Wild Crystallised Lifeforce", "Harvest"), ("veil", "Veiled Chaos Orb", "Veiled"),
-                                 ("bench", "", "Верстак")):
-            t = tk.Label(tabs, text=" " + label, bg=BG, fg=MUTED, font=(FONT, 9), compound="left", padx=3, pady=4,
+                                 ("bench", "", "Верстак"), ("beast", "", "Звери"), ("vaal", "Vaal Orb", "Vaal"),
+                                 ("qual", "Prismatic Catalyst", "Качество")):
+            t = tk.Label(tabs, text=" " + label, bg=BG, fg=MUTED, font=(FONT, 8), compound="left", padx=2, pady=4,
                          cursor="hand2", anchor="w")
             n = len(self._emu_tabs)
-            t.grid(row=n // 4, column=n % 4, sticky="we")
-            tabs.columnconfigure(n % 4, weight=1, uniform="tabs")
-            if icon:
-                self._icon(t, icon, 18)
+            t.grid(row=n // 5, column=n % 5, sticky="we")
+            tabs.columnconfigure(n % 5, weight=1, uniform="tabs")
+            t.configure(anchor="center")
             t.bind("<Button-1>", lambda e, k=key: self._emu_tab(k))
             t.bind("<Enter>", lambda e, w=t, k=key: k != self._emu_cur and w.configure(fg=FG))
             t.bind("<Leave>", lambda e, w=t, k=key: k != self._emu_cur and w.configure(fg=MUTED))
@@ -677,6 +697,9 @@ class MainWindow(tk.Toplevel):
         self._page_hv(self._emu_pages["hv"])
         self._page_veil(self._emu_pages["veil"])
         self._page_bench(self._emu_pages["bench"])
+        self._page_beast(self._emu_pages["beast"])
+        self._page_vaal(self._emu_pages["vaal"])
+        self._page_qual(self._emu_pages["qual"])
         self._emu_tab(self.settings.get("emu_tab", "ess"))
 
         # ---- справа: цели и журнал
@@ -728,6 +751,10 @@ class MainWindow(tk.Toplevel):
         self.sim_n = tk.StringVar(value="100")
         self._entry(r2, self.sim_n, 5).pack(side="left")
         self._btn(r2, "▦ Прогнать", self.emu_sim_fixed).pack(side="left", padx=(4, 0))
+        self.lock_var = tk.BooleanVar(value=False)
+        lk = tk.Checkbutton(r2, text="Hinekora", variable=self.lock_var, bg=BG1, fg=MUTED, selectcolor=BG2,
+                            activebackground=BG1, activeforeground=GOLD, font=(FONT, 8), bd=0, highlightthickness=0)
+        lk.pack(side="right", padx=(6, 0))
         self.aug_var = tk.BooleanVar(value=True)
         tk.Checkbutton(r2, text="+Aug", variable=self.aug_var, bg=BG1, fg=MUTED, selectcolor=BG2,
                        activebackground=BG1, activeforeground=GOLD, font=(FONT, 8), bd=0,
@@ -754,6 +781,11 @@ class MainWindow(tk.Toplevel):
             self.emu_apply_selected()
 
     def emu_apply_selected(self):
+        if getattr(self, "_lock_pending", False):
+            self.emu_status.configure(text="Сначала реши: оставить результат Hinekora's Lock или отказаться.", fg=WARN)
+            return
+        if self._emu_sel and self.lock_var.get() and self.emu:
+            return self._apply_with_lock()
         if not self._emu_sel:
             self.emu_status.configure(text="Сначала выбери метод — кликни по валюте, эссенции или фоссилам.", fg=WARN)
             return
@@ -764,6 +796,39 @@ class MainWindow(tk.Toplevel):
                 self.emu_do("augment")
             return
         self.emu_do(action, **kw)
+
+    def _apply_with_lock(self):
+        """Hinekora's Lock: показать результат следующего действия и дать отказаться (валюта не тратится)."""
+        n = len(self._emu_steps)
+        action, kw = self._emu_sel[0], self._emu_sel[1]
+        self.emu_do(action, **kw)
+        if len(self._emu_steps) == n:     # ошибка — ничего не применилось
+            return
+        self._lock_pending = True
+        self.emu.spent["Hinekora's Lock"] = self.emu.spent.get("Hinekora's Lock", 0) + 1
+        bar = tk.Frame(self.emu_page.master, bg="#2a2116", highlightthickness=1, highlightbackground=GOLD_LINE)
+        bar.pack(fill="x", before=self.emu_page, pady=(0, 4))
+        tk.Label(bar, text="Hinekora's Lock: предмет показан так, как выйдет. Оставить результат?", bg="#2a2116",
+                 fg=GOLD, font=(FONT, 9, "bold"), anchor="w", justify="left", wraplength=330).pack(fill="x", padx=8,
+                                                                                               pady=(6, 2))
+        bar = tk.Frame(bar, bg="#2a2116")
+        bar.pack(fill="x", padx=4, pady=(0, 4))
+
+        def decide(keep):
+            self._lock_pending = False
+            bar.destroy()
+            if not keep:
+                self.emu.undo()
+                self._emu_steps.pop()
+                self.emu.spent["Hinekora's Lock"] = self.emu.spent.get("Hinekora's Lock", 0) + 1
+                self.emu_status.configure(text="Отказался — валюта не потрачена, Lock израсходован.", fg=MUTED)
+            else:
+                self.emu_status.configure(text="Результат оставлен.", fg=GOOD)
+            self.emu_card._prev = None
+            self._emu_render()
+        self._btn(bar, "✗ отказаться", lambda: decide(False), WARN).pack(side="right", padx=4)
+        self._btn(bar, "✓ оставить", lambda: decide(True), GOOD).pack(side="right")
+        self._emu_render()
 
     # ------------------------------------------------------------ симуляция
     def _goal_met(self) -> bool:
@@ -875,12 +940,7 @@ class MainWindow(tk.Toplevel):
         res = {"attempts": [], "costs": [], "t0": _t.time()}
 
         def restore_start():
-            (em.rarity, em.mods, em.spent, em.log, infl, em.exarch, em.eater) = (
-                start[0], [type(m)(m.entry, m.crafted, m.fractured, list(m.values), m.veiled) for m in start[1]],
-                dict(start[2]), list(start[3]), list(start[4]), start[5], start[6])
-            if infl != em.influences:
-                em.influences = list(infl)
-                em.pool = em._make_pool()
+            em.restore(start, copy=True)
 
         def work():
             """Один предмет за раз, кусками по ~40 мс — интерфейс не замирает."""
@@ -912,10 +972,7 @@ class MainWindow(tk.Toplevel):
         def finish():
             self._sim_job = None
             self.sim_btn.configure(text="▶ Крутить до цели", fg=GOOD)
-            (em.rarity, em.mods, em.spent, em.log, infl, em.exarch, em.eater) = start
-            if infl != em.influences:
-                em.influences = list(infl)
-                em.pool = em._make_pool()
+            em.restore(start)
             em.history, self._emu_steps = saved[0], saved[1]
             em.rng.setstate(saved[2])
             a, c = sorted(res["attempts"]), res["costs"]
@@ -1050,6 +1107,104 @@ class MainWindow(tk.Toplevel):
                        tip=f"{inf.CONQUEROR_ORBS[name]}: добавляет мод влияния {name}").grid(
                 row=0, column=i, sticky="we", padx=2, pady=2)
             ir.columnconfigure(i, weight=1, uniform="cq")
+        self._cap_small(p, "Awakener's Orb — второе влияние")
+        self._note(p, "Уничтожает второй предмет с другим влиянием. Этот предмет станет редким с двумя "
+                      "влияниями: по одному моду влияния от каждого, остальное — случайно.").pack(fill="x")
+        ar = tk.Frame(p, bg=BG1)
+        ar.pack(fill="x", pady=4)
+        self.awk_inf = tk.StringVar(value="Warlord")
+        cb = ttk.Combobox(ar, textvariable=self.awk_inf, state="readonly", style="D.TCombobox", width=10,
+                          values=["Shaper", "Elder", "Crusader", "Redeemer", "Hunter", "Warlord"], font=(FONT, 9))
+        popdown_on_top(cb)
+        cb.pack(side="left")
+        cb.bind("<<ComboboxSelected>>", lambda e: self._awk_fill())
+        self.awk_mod = tk.StringVar()
+        self.awk_box = ttk.Combobox(ar, textvariable=self.awk_mod, state="readonly", style="D.TCombobox",
+                                    font=(FONT, 9))
+        popdown_on_top(self.awk_box)
+        self.awk_box.pack(side="left", fill="x", expand=True, padx=4)
+        self._awk_opts = {}
+        self._tile(p, "Awakener's Orb", "Awakener's Orb", self._awk_pick, size=24, compact=True,
+                   tip="Выбери влияние и мод уничтожаемого предмета (или «случайный»)").pack(fill="x", pady=(0, 6))
+        og = tk.Frame(p, bg=BG1)
+        og.pack(fill="x")
+        self._tile(og, "Orb of Dominance", "Orb of Dominance", lambda: self.emu_pick("dominance"), size=24,
+                   compact=True, tip="Maven's Orb: снимает случайный мод влияния и возвышает другой (нужно ≥2)").grid(
+            row=0, column=0, sticky="we", padx=2)
+        self._tile(og, "", "Craicic Maw", lambda: self.emu_pick("beast_influence"), size=24,
+                   compact=True, tip="Звериный крафт: добавляет мод влияния предмета").grid(row=0, column=1,
+                                                                                            sticky="we", padx=2)
+        og.columnconfigure(0, weight=1, uniform="og")
+        og.columnconfigure(1, weight=1, uniform="og")
+
+    def _cap_small(self, parent, text):
+        tk.Label(parent, text=text, bg=parent["bg"], fg=GOLD, font=(FONT, 9, "bold"), anchor="w").pack(
+            fill="x", pady=(10, 0))
+
+    def _awk_fill(self):
+        if not self.emu:
+            self._awk_opts = {}
+            self.awk_box["values"] = []
+            return
+        opts = self.emu.awakener_options(self.awk_inf.get())
+        self._awk_opts = {"случайный мод этого влияния": None}
+        self._awk_opts.update({f"{'П' if e.mod.kind == 'prefix' else 'С'} T{e.tier}  {short(e.mod.text)}": e.mod.id
+                               for e in opts})
+        self.awk_box["values"] = list(self._awk_opts)
+        self.awk_mod.set("случайный мод этого влияния")
+
+    def _awk_pick(self):
+        if not self._awk_opts:
+            self._awk_fill()
+        self.emu_pick("awakener", other=self.awk_inf.get(), mod_id=self._awk_opts.get(self.awk_mod.get()))
+
+    def _page_beast(self, p):
+        self._note(p, "Звериные крафты Менажери. Прочие рецепты (уники, валюта) на крафт модов не влияют.").pack(fill="x")
+        g = tk.Frame(p, bg=BG1)
+        g.pack(fill="x", pady=6)
+        items = (("Farric Wolf Alpha: +префикс, −суффикс", "beast_prefix", {}),
+                 ("Farric Lynx Alpha: +суффикс, −префикс", "beast_suffix", {}),
+                 ("Fenumal Arachnid: расколоть (Split)", "beast_split", {}),
+                 ("Craicic Maw: +мод влияния", "beast_influence", {}),
+                 ("Craicic Chimeral: отпечаток (magic)", "imprint", {}),
+                 ("Восстановить из отпечатка", "imprint_restore", {}))
+        for i, (label, act, kw) in enumerate(items):
+            self._tile(g, "", label, lambda a=act, k=kw: self.emu_pick(a, **k), size=20, compact=True).grid(
+                row=i, column=0, sticky="we", pady=1)
+        g.columnconfigure(0, weight=1)
+        self._cap_small(p, "Аспекты духов-зверей (крафтовый суффикс)")
+        ag = tk.Frame(p, bg=BG1)
+        ag.pack(fill="x", pady=4)
+        for i, a in enumerate(("Cat", "Avian", "Spider", "Crab")):
+            self._tile(ag, "", f"Aspect of the {a}", lambda x=a: self.emu_pick("beast_aspect", aspect=x),
+                       size=20, compact=True).grid(row=i // 2, column=i % 2, sticky="we", padx=1, pady=1)
+        ag.columnconfigure(0, weight=1, uniform="ag")
+        ag.columnconfigure(1, weight=1, uniform="ag")
+
+    def _page_vaal(self, p):
+        self._note(p, "Vaal Orb оскверняет предмет: ничего / Vaal-имплицит / перекат в редкий / сокеты — по 25%. "
+                      "После этого работают только Tainted-валюта и верстак.").pack(fill="x")
+        g = tk.Frame(p, bg=BG1)
+        g.pack(fill="x", pady=6)
+        for i, (name, act, label, tip) in enumerate((
+                ("Vaal Orb", "vaal", "Vaal", "Осквернить предмет"),
+                ("Tainted Chaos Orb", "tainted_chaos", "T. Chaos", "50%: перекат редкого, 50%: снять все моды"),
+                ("Tainted Exalted Orb", "tainted_exalt", "T. Exalt", "Добавляет или снимает мод (50/50)"),
+                ("Tainted Divine Teardrop", "tainted_divine", "T. Teardrop", "Тир каждого мода ±1"))):
+            self._tile(g, name, label, lambda a=act: self.emu_pick(a), tip=tip).grid(row=0, column=i, sticky="we", padx=2)
+            g.columnconfigure(i, weight=1, uniform="vg")
+
+    def _page_qual(self, p):
+        self._note(p, "Катализаторы (кольца, амулеты, пояса): качество до 20% усиливает моды своего тега и "
+                      "повышает их шанс выпасть на столько же процентов. Обычный предмет +5%, магический +2%, "
+                      "редкий +1% за катализатор.").pack(fill="x")
+        g = tk.Frame(p, bg=BG1)
+        g.pack(fill="x", pady=6)
+        for i, name in enumerate(sk.CATALYSTS):
+            self._tile(g, name, name.replace(" Catalyst", "").replace("Accelerating", "Accel."), lambda n=name: self.emu_pick("catalyst", name=n),
+                       tip=f"{name}: теги {', '.join(sk.CATALYSTS[name])}").grid(row=i // 5, column=i % 5,
+                                                                                sticky="we", padx=1, pady=1)
+            g.columnconfigure(i % 5, weight=1, uniform="ct")
 
     def _page_eld(self, p):
         self._note(p, "Ember — имплицит Searing Exarch, Ichor — Eater of Worlds (только броня: шлем, "
@@ -1150,6 +1305,7 @@ class MainWindow(tk.Toplevel):
             return
         infl = [self.inf_var.get()] if self.inf_var.get() in getattr(self, "inf_map", {}) else []
         self.emu = Emulator(self.data, self.base_pool, influences=infl)
+        self.emu.blocked = set(getattr(self, "blocked", set()))
         self._emu_steps = []
         self.emu_card._prev = None
         self._emu_lists()
@@ -1194,6 +1350,7 @@ class MainWindow(tk.Toplevel):
         if not self.pool:
             return
         self.emu = Emulator(self.data, self.base_pool, influences=[i for i in item.influences if i in tags])
+        self.emu.blocked = set(getattr(self, "blocked", set()))
         self._emu_steps = []
         self.emu_card._prev = None
         try:
@@ -1229,6 +1386,7 @@ class MainWindow(tk.Toplevel):
             return f"{'★ ' if o in metas else ''}{o['mod'].text.splitlines()[0]}  [{cost}]"
         self._emu_bench = {lbl(o): o for o in metas + rest}
         self._emu_bench_fill()
+        self._awk_fill()
 
     def _emu_ess_icons(self, ess):
         """Сетка иконок эссенций как на Craft of Exile: по одной на вид, лучший доступный тир."""
@@ -1348,6 +1506,13 @@ class MainWindow(tk.Toplevel):
         "harvest_reforge": ("Wild Crystallised Lifeforce", "Harvest Reforge"),
         "harvest_same": ("Wild Crystallised Lifeforce", "Harvest: те же моды"),
         "harvest_augment": ("Wild Crystallised Lifeforce", "Harvest +мод/−мод"),
+        "vaal": ("Vaal Orb", "Vaal Orb"), "tainted_chaos": ("Tainted Chaos Orb", "Tainted Chaos"),
+        "tainted_exalt": ("Tainted Exalted Orb", "Tainted Exalt"),
+        "tainted_divine": ("Tainted Divine Teardrop", "Tainted Divine Teardrop"),
+        "dominance": ("Orb of Dominance", "Orb of Dominance"), "beast_prefix": ("", "Farric Wolf Alpha"),
+        "beast_suffix": ("", "Farric Lynx Alpha"), "beast_split": ("", "Fenumal Plagued Arachnid: Split"),
+        "beast_influence": ("", "Craicic Maw"), "imprint": ("", "Отпечаток (Craicic Chimeral)"),
+        "imprint_restore": ("", "Восстановить отпечаток"),
     }
 
     def _step_of(self, action, kw):
@@ -1363,6 +1528,12 @@ class MainWindow(tk.Toplevel):
             return side, f"{inf.ELDRITCH_TIERS.get(kw.get('level'), '')} {'Ember' if side == 'Exarch' else 'Ichor'}"
         if action == "bench":
             return "", "Верстак: " + kw["option"]["mod"].text.splitlines()[0]
+        if action == "awakener":
+            return "Awakener's Orb", f"Awakener's Orb (+{kw.get('other')})"
+        if action == "catalyst":
+            return kw["name"], kw["name"]
+        if action == "beast_aspect":
+            return "", f"Aspect of the {kw['aspect']}"
         icon, label = self.STEP_ICONS.get(action, ("", action))
         if kw.get("label"):
             label += f" ({kw['label']})"
@@ -1375,7 +1546,11 @@ class MainWindow(tk.Toplevel):
             tier = "крафт" if m.crafted else ("скрыт" if m.veiled else f"T{m.entry.tier}")
             mods.setdefault(m.mod.id, []).append((m.text, tier, m.kind))
         impl = {s: getattr(em, s).text for s in ("exarch", "eater") if getattr(em, s)}
-        return {"rarity": em.rarity, "mods": mods, "impl": impl, "infl": list(em.influences)}
+        st = getattr(em, "state", {})
+        return {"rarity": em.rarity, "mods": mods, "impl": impl, "infl": list(em.influences),
+                "state": {"quality": st.get("quality", 0), "catalyst": st.get("catalyst"),
+                          "corrupted": st.get("corrupted"), "split": st.get("split"),
+                          "imprint": bool(st.get("imprint")), "notes": list(st.get("notes", []))}}
 
     @staticmethod
     def _emu_diff(a: dict, b: dict) -> list[tuple[str, str]]:
@@ -1387,6 +1562,19 @@ class MainWindow(tk.Toplevel):
         for i in b["infl"]:
             if i not in a["infl"]:
                 out.append(("add", f"влияние {i}"))
+        sa, sb = a.get("state", {}), b.get("state", {})
+        if (sa.get("quality"), sa.get("catalyst")) != (sb.get("quality"), sb.get("catalyst")):
+            out.append(("chg", f"качество {sa.get('quality', 0)}% → {sb.get('quality', 0)}%"
+                        + (f" ({sb['catalyst'].replace(' Catalyst', '')})" if sb.get("catalyst") else "")))
+        if sb.get("corrupted") and not sa.get("corrupted"):
+            out.append(("del", "предмет осквернён"))
+        if sb.get("split") and not sa.get("split"):
+            out.append(("m", "Split"))
+        if sb.get("imprint") != sa.get("imprint"):
+            out.append(("m", "отпечаток сохранён" if sb.get("imprint") else "восстановлено из отпечатка"))
+        for n in sb.get("notes", []):
+            if n not in sa.get("notes", []):
+                out.append(("add", n))
         for side, ttl in (("exarch", "Exarch"), ("eater", "Eater")):
             x, y = a["impl"].get(side), b["impl"].get(side)
             if x != y:
@@ -1468,36 +1656,75 @@ class MainWindow(tk.Toplevel):
 
     # ------------------------------------------------------------ сокеты
     def _build_sockets(self):
+        """Сокеты: слева предмет и что нужно, справа карточки способов (Chromatic и рецепты верстака)."""
+        from ui_cards import ScrollList
         f = self.tab_sock
-        row = tk.Frame(f, bg=BG)
-        row.pack(fill="x", padx=8, pady=(10, 4))
+        left = tk.Frame(f, bg=BG, width=300)
+        left.pack(side="left", fill="y", padx=(6, 6), pady=8)
+        left.pack_propagate(False)
         self.sk_vars = {}
-        for key, label, default, w in (("str", "Str", "0", 5), ("dex", "Dex", "0", 5), ("int", "Int", "0", 5),
-                                       ("ilvl", "ilvl", "84", 4), ("q", "качество", "20", 4),
-                                       ("n", "сокетов", "6", 3), ("R", "нужно R", "0", 3), ("G", "G", "0", 3),
-                                       ("B", "B", "0", 3)):
-            tk.Label(row, text=label, bg=BG, fg={"R": "#e07a5f", "G": GOOD, "B": BLUE}.get(key, MUTED),
-                     font=(FONT, 9)).pack(side="left", padx=(8, 3))
+
+        def field(parent, key, label, default, color=MUTED):
+            r = tk.Frame(parent, bg=BG1)
+            r.pack(fill="x", padx=8, pady=2)
+            tk.Label(r, text=label, bg=BG1, fg=color, font=(FONT, 9), width=16, anchor="w").pack(side="left")
             v = tk.StringVar(value=default)
-            self._entry(row, v, w).pack(side="left")
+            e = self._entry(r, v, 6)
+            e.pack(side="right")
+            v.trace_add("write", lambda *a: self._sock_preview())
             self.sk_vars[key] = v
-        self._act(row, "Посчитать", self.calc_sockets).pack(side="left", padx=12)
-        row2 = tk.Frame(f, bg=BG)
-        row2.pack(fill="x", padx=8)
+
+        self._cap(left, "Предмет")
+        pf = tk.Frame(left, bg=BG1, highlightthickness=1, highlightbackground=LINE)
+        pf.pack(fill="x", pady=(2, 10))
+        tk.Frame(pf, bg=BG1, height=4).pack()
+        for key, label, default in (("str", "Сила (Str)", "0"), ("dex", "Ловкость (Dex)", "0"),
+                                    ("int", "Интеллект (Int)", "0"), ("ilvl", "ilvl", "84"), ("q", "качество", "20")):
+            field(pf, key, label, default)
+        self._btn(pf, "взять требования базы", self._sock_from_base).pack(anchor="w", padx=4, pady=(2, 6))
+
+        self._cap(left, "Нужно")
+        nf = tk.Frame(left, bg=BG1, highlightthickness=1, highlightbackground=LINE)
+        nf.pack(fill="x", pady=(2, 10))
+        tk.Frame(nf, bg=BG1, height=4).pack()
+        field(nf, "n", "сокетов", "6")
+        field(nf, "R", "красных", "0", "#e07a5f")
+        field(nf, "G", "зелёных", "0", GOOD)
+        field(nf, "B", "синих", "0", BLUE)
+        self.sk_prev = tk.Frame(nf, bg=BG1)
+        self.sk_prev.pack(fill="x", padx=8, pady=6)
         self.sk_white = tk.BooleanVar(value=False)
-        tk.Checkbutton(row2, text="белые сокеты (механика лиги 3.29: чем ниже ilvl, тем больше белых)",
-                       variable=self.sk_white, bg=BG, fg=FG, selectcolor=BG2, activebackground=BG,
-                       activeforeground=GOLD, font=(FONT, 9), highlightthickness=0, bd=0).pack(side="left")
-        self._btn(row2, "взять требования базы", self._sock_from_base).pack(side="left", padx=10)
-        self.sk_out = tk.Text(f, bg=BG1, fg=FG, relief="flat", wrap="word", font=(FONT, 10),
-                              highlightthickness=1, highlightbackground=LINE, padx=12, pady=10, cursor="arrow")
-        self.sk_out.pack(fill="both", expand=True, padx=8, pady=8)
-        for tag, kw in (("h", dict(foreground=GOLD, font=(FONT, 11, "bold"))), ("m", dict(foreground=MUTED, font=(FONT, 9))),
-                        ("best", dict(foreground=GOOD, font=(FONT, 10, "bold"))), ("bad", dict(foreground=WARN))):
-            self.sk_out.tag_configure(tag, **kw)
-        self.sk_out.insert("end", "Введи требования атрибутов предмета (или нажми «взять требования базы»), "
-                                  "число сокетов и сколько нужно красных/зелёных/синих.", "m")
-        self.sk_out.configure(state="disabled")
+        tk.Checkbutton(nf, text="белые сокеты (3.29: ниже ilvl — больше белых)", variable=self.sk_white, bg=BG1,
+                       fg=FG, selectcolor=BG2, activebackground=BG1, activeforeground=GOLD, font=(FONT, 8),
+                       highlightthickness=0, bd=0, anchor="w", wraplength=270, justify="left").pack(fill="x", padx=8,
+                                                                                                 pady=(0, 6))
+        self._act(left, "Посчитать", self.calc_sockets).pack(fill="x")
+        self._note(left, "Формула — как в калькуляторе Siveran. Число сокетов и связи надёжнее делать "
+                         "верстаком: 6 сокетов — 350 Jeweller's, 6 связей — 1500 Fusing.").pack(fill="x", pady=8)
+
+        right = tk.Frame(f, bg=BG)
+        right.pack(side="left", fill="both", expand=True, padx=(0, 6), pady=8)
+        self._cap(right, "Способы покраски")
+        self.sk_out = ScrollList(right)
+        self.sk_out.pack(fill="both", expand=True, pady=(2, 0))
+        self.sk_out.message("Введи требования атрибутов предмета (или «взять требования базы»), число сокетов "
+                            "и сколько нужно красных/зелёных/синих.")
+        self._sock_preview()
+
+    def _sock_preview(self):
+        from ui_cards import socket_preview
+        if not hasattr(self, "sk_prev"):
+            return
+        for w in self.sk_prev.winfo_children():
+            w.destroy()
+        try:
+            v = {k: int(self.sk_vars[k].get() or 0) for k in ("n", "R", "G", "B")}
+        except (ValueError, KeyError):
+            return
+        n = max(1, min(6, v["n"]))
+        want = (v["R"], v["G"], v["B"])
+        if sum(want) <= n:
+            socket_preview(self.sk_prev, want, n).pack(side="left")
 
     def _sock_from_base(self):
         if not self.pool:
@@ -1525,30 +1752,24 @@ class MainWindow(tk.Toplevel):
         white = sk.white_chance(v["ilvl"], v["q"]) if self.sk_white.get() else 0.0
         res, ch = sk.methods(v["str"], v["dex"], v["int"], n, want, self.prices.get("Chromatic Orb") or 0.2,
                              white, recipes)
+        from ui_cards import result_card
         o = self.sk_out
-        o.configure(state="normal")
-        o.delete("1.0", "end")
-        o.insert("end", "Шанс цвета одного сокета: ", "m")
-        o.insert("end", f"R {ch[0] * (1 - white):.1%} · G {ch[1] * (1 - white):.1%} · B {ch[2] * (1 - white):.1%}"
-                        + (f" · белый {white:.1%}" if white else "") + "\n\n")
+        o.clear()
+        tk.Label(o.inner, text=f"Шанс цвета одного сокета:  R {ch[0] * (1 - white):.1%}   G {ch[1] * (1 - white):.1%}   "
+                               f"B {ch[2] * (1 - white):.1%}" + (f"   белый {white:.1%}" if white else ""),
+                 bg=o.inner["bg"], fg=MUTED, font=(FONT, 9), anchor="w").pack(fill="x", padx=12, pady=(8, 2))
+        sp = lambda x: f"{x:,.0f}".replace(",", " ")
         for i, m in enumerate(res):
-            o.insert("end", m["name"], "h")
-            if i == 0:
-                o.insert("end", "   дешевле всего", "best")
-            o.insert("end", f"\n  шанс {m['chance']:.3%} · в среднем ~{m['tries']:,.0f} попыток · "
-                            f"~{m['cost']:,.0f} Chromatic ≈ {m['cost_chaos']:,.0f}c\n\n".replace(",", " "))
+            result_card(o.inner, title=m["name"], icon_names=["Chromatic Orb"], best=i == 0,
+                        cost=f"{sp(m["cost_chaos"])}c", chance=None,
+                        chance_text=f"шанс {m['chance']:.3%} · в среднем ~{sp(m['tries'])} попыток · "
+                                    f"~{sp(m['cost'])} Chromatic")
         if not res:
-            o.insert("end", "Так не получится.", "bad")
-        o.insert("end", "Формула — как в калькуляторе Siveran (siveran.github.io). Число сокетов и связи "
-                        "надёжнее делать верстаком: 6 сокетов — 350 Jeweller's, 6 связей — 1500 Fusing.", "m")
-        o.configure(state="disabled")
+            o.message("Так не получится.", WARN)
+        o.finish()
 
     def _sock_msg(self, text, tag="m"):
-        o = self.sk_out
-        o.configure(state="normal")
-        o.delete("1.0", "end")
-        o.insert("end", text, tag)
-        o.configure(state="disabled")
+        self.sk_out.message(text, WARN if tag == "bad" else MUTED)
 
     # ------------------------------------------------------------ окно
     def _focus_input(self, e):
@@ -1687,11 +1908,11 @@ class MainWindow(tk.Toplevel):
                 self.ench_var.set(names[0] if names else "")
             if self.ench_var.get() in ench:
                 base_extra.add(ench[self.ench_var.get()])
-            self.ench_frame.pack(side="left", before=self.pool_hint)
+            self.ench_frame.pack(side="left")
         else:
             self.ench_frame.pack_forget()
         if base.item_class in sk.CATALYST_CLASSES:
-            self.cat_frame.pack(side="left", before=self.pool_hint)
+            self.cat_frame.pack(side="left")
         else:
             self.cat_frame.pack_forget()
             self.cat_var.set("нет")
@@ -1702,7 +1923,10 @@ class MainWindow(tk.Toplevel):
         self.pool = ModPool(self.data, base, ilvl, extra) if extra != base_extra else self.base_pool
         if self.cat_var.get() in sk.CATALYSTS:
             self.pool = sk.apply_catalyst(self.pool, self.cat_var.get(), 20)
-        self.table = pool_table(self.pool)
+        if getattr(self, "_blocked_base", None) != base.name:
+            self.blocked = set()
+            self._blocked_base = base.name
+        self.table = self._table_with_blocks()
         self.settings.update(main_base=base.name, main_ilvl=ilvl)
         self._save_settings(self.settings)
         cls = recipes.CLASS_RU.get(base.item_class, base.item_class) if i18n.lang() == "ru" else base.item_class
@@ -1737,9 +1961,26 @@ class MainWindow(tk.Toplevel):
             out[ps["name"]] = ps["tag"]
         return dict(sorted(out.items()))
 
+    def _pool_stats_paint(self):
+        t = self.table
+        if not t or not hasattr(self, "_stat_lbls"):
+            return
+        sp = lambda x: f"{x:,.0f}".replace(",", " ")
+        groups = t["groups"]
+        self._stat_lbls["groups"].configure(text=str(sum(1 for g in groups if not g.get("blocked"))))
+        self._stat_lbls["pw"].configure(text=sp(t["prefix_weight"]))
+        self._stat_lbls["sw"].configure(text=sp(t["suffix_weight"]))
+        self._stat_lbls["sel"].configure(text=str(len(self.selected)))
+        self._stat_lbls["blk"].configure(text=str(len(getattr(self, "blocked", ()))),
+                                         fg=WARN if getattr(self, "blocked", None) else FG)
+        for kind, lbl in self._pool_caps.items():
+            n = sum(1 for g in groups if g["kind"] == kind and not g.get("blocked"))
+            lbl.configure(text=f"{'ПРЕФИКСЫ' if kind == 'prefix' else 'СУФФИКСЫ'}  ·  {n}")
+
     def _render_pool(self):
         if not self.table:
             return
+        self._pool_stats_paint()
         f = self.filter_var.get().lower().strip()
         for kind, tv in self.trees.items():
             tv.delete(*tv.get_children())
@@ -1757,6 +1998,10 @@ class MainWindow(tk.Toplevel):
                 gid = f"{g['kind']}|{g['type']}"
                 is_inf = any(inf.is_influence_mod(e.mod) for e in self.pool.all
                              if e.mod.kind == g["kind"] and e.mod.type == g["type"])
+                if g.get("blocked"):
+                    tv.insert("", "end", iid=gid, text="⊘ " + short(g["text"]),
+                              values=("", "—", "—", "", "блок"), tags=("blocked",))
+                    continue
                 tv.insert("", "end", iid=gid, text=("◆ " if is_inf else "") + short(g["text"]),
                           values=("☑" if sel else "☐", pct(g["chance_all"]), pct(g["chance_kind"]),
                                   weight_bar(g["chance_kind"] / top), f"{i18n.t('до T')}{tier}"),
@@ -1770,6 +2015,54 @@ class MainWindow(tk.Toplevel):
         kind, typ = gid.split("|", 1)
         return next((g for g in self.table["groups"] if g["kind"] == kind and g["type"] == typ), None)
 
+    # ---- блокировка модов правым кликом (как на Craft of Exile)
+    def _calc_pool(self):
+        """Пул без заблокированных модов — для калькулятора, эссенций/фоссилов и эмулятора."""
+        if not getattr(self, "blocked", None):
+            return self.pool
+        import copy as _c
+        fp = _c.copy(self.pool)
+        fp.available = [e for e in self.pool.available if (e.mod.kind, e.mod.type) not in self.blocked]
+        return fp
+
+    def _table_with_blocks(self):
+        full = pool_table(self.pool)
+        if not getattr(self, "blocked", None):
+            return full
+        part = pool_table(self._calc_pool())
+        by = {(g["kind"], g["type"]): g for g in part["groups"]}
+        out = []
+        for g in full["groups"]:
+            key = (g["kind"], g["type"])
+            if key in self.blocked:
+                g = dict(g, blocked=True, chance_all=0.0, chance_kind=0.0)
+            else:
+                g = by.get(key, g)
+            out.append(g)
+        part["groups"] = out
+        return part
+
+    def _tree_block(self, e, tv):
+        iid = tv.identify_row(e.y)
+        if not iid or "|" not in iid:
+            return
+        kind, typ = iid.split("|", 1)
+        key = (kind, typ)
+        self.blocked = getattr(self, "blocked", set())
+        if key in self.blocked:
+            self.blocked.discard(key)
+        else:
+            self.blocked.add(key)
+            self.selected.pop(key, None)
+        if self.emu:
+            self.emu.blocked = set(self.blocked)
+        self.table = self._table_with_blocks()
+        self._render_pool()
+        n = len(self.blocked)
+        self.status.configure(text=f"Заблокировано модов: {n} — они не выпадают в эмуляторе и не учитываются в шансах. "
+                                   "Правый клик ещё раз — разблокировать." if n else "Блокировки сняты.", fg=MUTED)
+        return "break"
+
     def _tree_click(self, e, tv: ttk.Treeview):
         region = tv.identify_region(e.x, e.y)
         if region != "cell" and region != "tree":
@@ -1779,7 +2072,7 @@ class MainWindow(tk.Toplevel):
         if not iid or "|" not in iid:
             return
         g = self._group(iid)
-        if not g:
+        if not g or g.get("blocked"):
             return
         key = (g["kind"], g["type"])
         avail = sorted(t["tier"] for t in g["tiers"] if t["available"])
@@ -1803,15 +2096,38 @@ class MainWindow(tk.Toplevel):
         sel = key in self.selected
         tv.set(iid, "chk", "☑" if sel else "☐")
         tv.item(iid, tags=("sel",) if sel else ())
+        self._pool_stats_paint()
+        self._render_targets()
         return "break"
 
     def _render_targets(self):
-        if not self.selected:
-            self.targets_lbl.configure(text="ничего не выбрано", fg=MUTED)
+        box = getattr(self, "targets_box", None)
+        if box is None:
             return
-        lines = [f"{i18n.t('П') if k[0] == 'prefix' else i18n.t('С')} · {v['label']}  — {i18n.t('до T')}{v['max_tier']}"
-                 for k, v in self.selected.items()]
-        self.targets_lbl.configure(text="\n".join(lines), fg=FG)
+        for w in box.winfo_children():
+            w.destroy()
+        if not self.selected:
+            tk.Label(box, text="ничего не выбрано — клик по ☐ во вкладке «Пул модов»", bg=BG1, fg=MUTED,
+                     font=(FONT, 9), wraplength=270, justify="left", anchor="w").pack(fill="x", padx=8, pady=8)
+            return
+        for k, v in list(self.selected.items()):
+            r = tk.Frame(box, bg=BG1)
+            r.pack(fill="x", padx=6, pady=2)
+            tk.Label(r, text="П" if k[0] == "prefix" else "С", bg="#24201a", fg=MUTED, font=(FONT, 8, "bold"),
+                     width=2).pack(side="left")
+            tk.Label(r, text=v["label"], bg=BG1, fg=FG, font=(FONT, 9), anchor="w").pack(side="left", padx=6,
+                                                                                        fill="x", expand=True)
+            tk.Label(r, text=f"{i18n.t('до T')}{v['max_tier']}", bg=BG1, fg=GOLD, font=(FONT, 9)).pack(side="left")
+            x = tk.Label(r, text="✕", bg=BG1, fg=DIM, font=(FONT, 9), cursor="hand2", padx=4)
+            x.pack(side="left")
+            x.bind("<Button-1>", lambda e, key=k: self._unselect(key))
+
+    def _unselect(self, key):
+        self.selected.pop(key, None)
+        self._render_targets()
+        self._render_pool()
+        if self.emu:
+            self._emu_render()
 
     # ------------------------------------------------------------ расчёт
     def calculate(self):
@@ -1820,7 +2136,7 @@ class MainWindow(tk.Toplevel):
             return
         targets = [Target(k[0], k[1], v["max_tier"], v["label"]) for k, v in self.selected.items()]
         self.calc_status.configure(text="считаю… (Chaos-симуляция может занять несколько секунд)", fg=MUTED)
-        pool = self.pool
+        pool = self._calc_pool()
         use_e, use_f, use_h = self.use_ess.get(), self.use_fos.get(), self.use_hv.get()
 
         def work():
@@ -1840,38 +2156,29 @@ class MainWindow(tk.Toplevel):
         threading.Thread(target=work, daemon=True).start()
 
     def _show_results(self, results, target="out"):
+        from ui_cards import result_card
         o = getattr(self, target)
-        o.configure(state="normal")
-        o.delete("1.0", "end")
+        o.clear()
         best = next((r for r in results if r["cost_chaos"] is not None), None)
         dv = self.prices.divine
         st = icons.store()
         for r in results:
-            for n in (st.find_all(r["name"] + " " + r["how"][:80], 4) if st else []):
-                img = st.get(n, 22)
-                if img is not None:
-                    o.image_create("end", image=img, padx=1)
-            o.insert("end", (" " if st else "") + r["name"], "h")
-            if r is best:
-                o.insert("end", "   дешевле всего", "best")
-            o.insert("end", "\n" + r["how"] + "\n", "m")
-            o.insert("end", money(r["cost_chaos"], dv, r.get("chance") or 0) + "\n",
-                     "big" if r["cost_chaos"] is not None else "bad")
+            names = st.find_all(r["name"] + " " + r["how"][:80], 4) if st else []
             if r.get("chance_label"):
-                o.insert("end", r["chance_label"] + "\n")
+                ct = r["chance_label"]
             elif r["chance"]:
-                o.insert("end", f"Шанс за попытку: {pct(r['chance'])} · в среднем ~{r['attempts']:,.0f} попыток\n"
-                         .replace(",", " "))
-            use = [f"{k}: ~{v:,.1f}".replace(",", " ") if v < 10 else f"{k}: ~{v:,.0f}".replace(",", " ")
-                   for k, v in r["use"].items() if v > 0.05]
-            if use:
-                o.insert("end", "  " + "   ·   ".join(use) + "\n", "m")
-            if r.get("note"):
-                o.insert("end", "  ⚠ " + r["note"] + "\n", "bad")
-            o.insert("end", "\n")
+                ct = f"шанс {pct(r['chance'])} · в среднем ~{r['attempts']:,.0f} попыток".replace(",", " ")
+            else:
+                ct = ""
+            uses = [(k, f"~{v:,.1f}".replace(",", " ") if v < 10 else f"~{v:,.0f}".replace(",", " "))
+                    for k, v in r["use"].items() if v > 0.05]
+            result_card(o.inner, title=r["name"], icon_names=names, best=r is best, desc=r["how"],
+                        cost=money(r["cost_chaos"], dv, r.get("chance") or 0), cost_bad=r["cost_chaos"] is None,
+                        chance=r["chance"] if r.get("chance") else None, chance_text=ct, uses=uses,
+                        note=r.get("note") or "")
         if not results:
-            o.insert("end", "Для такого набора модов пока нет подходящих методов.", "m")
-        o.configure(state="disabled")
+            o.message("Для такого набора модов пока нет подходящих методов.")
+        o.finish()
         st = self.calc_status if target == "out" else self.ef_status
         st.configure(text=f"цены: {self.prices.league}, {self.prices.source}", fg=MUTED)
 

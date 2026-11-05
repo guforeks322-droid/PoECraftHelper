@@ -168,3 +168,63 @@ def test_emulator_load_item_from_game():
         for pm, m in zip(item.mods, em.mods):
             assert m.text.split(" / ")[0].replace("+", "") in pm.lines[0].replace("+", "").replace("(", " (") or m.values
         em.apply("exalt" if item.rarity == "Rare" else "augment") if len(em.mods) < 6 else None
+
+
+def test_new_crafts_beast_tainted_awakener_catalyst():
+    import random
+    from poecraft.emulator import CraftError, Emulator
+    from poecraft.pool import ModPool
+    data = GameData()
+    belt = data.bases["Stygian Vise"]
+    em = Emulator(data, ModPool(data, belt, 86), seed=3)
+    em.apply("alchemy")
+    # звери: +суффикс, −префикс
+    while len(em.suffixes) >= 3:
+        em.apply("chaos")
+    p0, s0 = len(em.prefixes), len(em.suffixes)
+    em.apply("beast_suffix")
+    assert len(em.suffixes) == s0 + 1 and len(em.prefixes) == max(0, p0 - 1)
+    # Vaal → дальше только Tainted
+    em.apply("vaal")
+    assert em.state["corrupted"]
+    with pytest.raises(CraftError):
+        em.apply("chaos")
+    for _ in range(5):
+        if em.rarity == "Rare":
+            em.apply("tainted_exalt")
+    em.undo()
+    # катализатор: качество растёт и сбрасывается откатом
+    em2 = Emulator(data, ModPool(data, belt, 86), seed=1)
+    em2.apply("catalyst", name="Prismatic Catalyst")
+    assert em2.state["quality"] == 5
+    em2.undo()
+    assert em2.state["quality"] == 0
+    # Awakener: два влияния
+    em3 = Emulator(data, ModPool(data, belt, 86), seed=2, influences=[])
+    em3.apply("alchemy")
+    while len(em3.mods) >= 6:
+        em3.apply("chaos")
+    em3.apply("conqueror", name="Hunter")
+    em3.apply("awakener", other="Warlord")
+    assert em3.influences == ["Hunter", "Warlord"] and em3.rarity == "Rare"
+    # отпечаток
+    em4 = Emulator(data, ModPool(data, belt, 86), seed=5)
+    em4.apply("transmute")
+    before = [m.mod.id for m in em4.mods]
+    em4.apply("imprint")
+    em4.apply("alteration")
+    em4.apply("imprint_restore")
+    assert [m.mod.id for m in em4.mods] == before
+
+
+def test_special_fossils():
+    from poecraft import currency_craft as cc
+    from poecraft.emulator import Emulator
+    from poecraft.pool import ModPool
+    data = GameData()
+    fos = {f.name: f for f in cc.fossils(data)}
+    em = Emulator(data, ModPool(data, data.bases["Stygian Vise"], 86), seed=4)
+    em.apply("fossils", fossils=[fos["Fractured Fossil"], fos["Pristine Fossil"]])
+    assert sum(m.fractured for m in em.mods) == 1 and em.state["split"]
+    em.apply("fossils", fossils=[fos["Bloodstained Fossil"]])
+    assert em.state["corrupted"]

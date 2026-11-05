@@ -248,13 +248,34 @@ class IconStore:
         if p.exists():
             return p
         # редкие тиры эссенций не торгуются — берём картинку соседнего тира того же вида
-        m = re.match(r"(\w+) (Essence of .+)", n)
+        m = re.match(r"(\w+) (Essence of (.+))", n)
         if m:
             for tier in ESSENCE_TIERS:
                 q = ICON_DIR / f"{slug(tier + ' ' + m.group(2))}.png"
                 if q.exists():
                     return q
+            # этого вида эссенции нет в торговле — картинку берём прямо с CDN игры по её пути
+            kind = m.group(3).replace(" ", "")
+            num = {t: 7 - i for i, t in enumerate(ESSENCE_TIERS)}.get(m.group(1), 6)
+            self._dl_direct(n, f"{CDN}/image/Art/2DItems/Currency/Essence/{kind}{num}.png?scale=1", p)
         return None
+
+    def _dl_direct(self, name, url, path):
+        if name in self._art_pending:
+            return
+        self._art_pending.add(name)
+
+        def run():
+            try:
+                req = urllib.request.Request(url, headers=UA)
+                with urllib.request.urlopen(req, timeout=20) as r:
+                    data = r.read()
+                if data[:4] == b"\x89PNG":
+                    path.write_bytes(data)
+                    self.root.after(0, self._notify)
+            except Exception:
+                pass
+        threading.Thread(target=run, daemon=True).start()
 
     def get(self, name: str, size: int = 24):
         key = (resolve(name), size)
