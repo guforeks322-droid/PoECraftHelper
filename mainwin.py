@@ -221,6 +221,9 @@ class MainWindow(tk.Toplevel):
             self._fill_fossils()
             self._fill_essences()
             self._paint_influence()
+            if self.emu:
+                self.emu_card._prev = None
+                self._emu_render()
         except Exception:
             pass
 
@@ -603,18 +606,11 @@ class MainWindow(tk.Toplevel):
                                    font=(FONT, 9))
         self.emu_status.pack(side="left", padx=10)
 
-        self.emu_card = tk.Text(f, bg=BG1, fg=FG, relief="flat", wrap="word", font=(FONT, 10), width=50,
-                                highlightthickness=1, highlightbackground=LINE, padx=12, pady=10, cursor="arrow")
+        from itemcard import ItemCard
+        self.emu_card = ItemCard(f, self.data, on_rewind=self.emu_rewind)
+        self.emu_card.on_tip = lambda t: t and self.emu_status.configure(text=t, fg=MUTED)
         self.emu_card.grid(row=1, column=0, sticky="nsew", padx=(6, 4), pady=(0, 6))
-        for tag, kw in (("Normal", dict(foreground="#c8c8c8", font=(FONT, 12, "bold"))),
-                        ("Magic", dict(foreground="#8888ff", font=(FONT, 12, "bold"))),
-                        ("Rare", dict(foreground="#ffff77", font=(FONT, 12, "bold"))),
-                        ("m", dict(foreground=MUTED, font=(FONT, 9))), ("good", dict(foreground=GOOD)),
-                        ("craft", dict(foreground=BLUE)), ("frac", dict(foreground="#a29162")),
-                        ("h", dict(foreground=GOLD, font=(FONT, 10, "bold"))), ("bad", dict(foreground=WARN)),
-                        ("infl", dict(foreground="#c39bd3")), ("veil", dict(foreground="#d4a44c"))):
-            self.emu_card.tag_configure(tag, **kw)
-        self.emu_card.configure(state="disabled")
+        self._emu_steps: list[tuple[str, str]] = []
 
         side = tk.Frame(f, bg=BG)
         side.grid(row=1, column=1, sticky="nsew", padx=(4, 6), pady=(0, 6))
@@ -729,6 +725,8 @@ class MainWindow(tk.Toplevel):
             return
         infl = [self.inf_var.get()] if self.inf_var.get() in getattr(self, "inf_map", {}) else []
         self.emu = Emulator(self.data, self.base_pool, influences=infl)
+        self._emu_steps = []
+        self.emu_card._prev = None
         self._emu_lists()
         self.emu_status.configure(text=f"{self.pool.base.name}, ilvl {self.pool.ilvl}", fg=MUTED)
         self._emu_render()
@@ -771,6 +769,8 @@ class MainWindow(tk.Toplevel):
         if not self.pool:
             return
         self.emu = Emulator(self.data, self.base_pool, influences=[i for i in item.influences if i in tags])
+        self._emu_steps = []
+        self.emu_card._prev = None
         try:
             unknown = self.emu.load_item(item, Advisor(self.data)._match_mod)
         except CraftError as e:
@@ -839,8 +839,11 @@ class MainWindow(tk.Toplevel):
         try:
             if action == "undo":
                 self.emu.undo()
+                if self._emu_steps:
+                    self._emu_steps.pop()
             else:
                 self.emu.apply(action, **kw)
+                self._emu_steps.append(self._step_of(action, kw))
             self.emu_status.configure(text=self.emu.log[-1] if self.emu.log else "", fg=MUTED)
         except CraftError as e:
             self.emu_status.configure(text=str(e), fg=WARN)
@@ -891,81 +894,59 @@ class MainWindow(tk.Toplevel):
 
     def _emu_render(self):
         em = self.emu
-        c = self.emu_card
-        c.configure(state="normal")
-        c.delete("1.0", "end")
         self.emu_fos_lbl.configure(text=", ".join(n.replace(" Fossil", "") for n in self.fos_sel) or "не выбраны")
         if not em:
-            c.configure(state="disabled")
+            self.emu_card.render(None)
             return
         targets = self._targets()
-        names = {"Normal": "Обычный", "Magic": "Магический", "Rare": "Редкий"}
-        c.insert("end", f"{em.pool.base.name}\n", em.rarity)
-        mp, ms = em.limits()
-        c.insert("end", f"{names[em.rarity]} · ilvl {em.pool.ilvl} · префиксов {len(em.prefixes)}/{mp if em.rarity != 'Magic' else 1}"
-                        f" · суффиксов {len(em.suffixes)}/{ms if em.rarity != 'Magic' else 1}\n\n", "m")
-        if em.influences:
-            c.insert("end", "Влияние: ", "infl")
-            st = icons.store()
-            for n in em.influences:
-                img = st.get(n, 20) if st else None
-                if img is not None:
-                    c.image_create("end", image=img, padx=2)
-                c.insert("end", n + "  ", "infl")
-            c.insert("end", "\n")
-        for side_, title_ in (("exarch", "Searing Exarch"), ("eater", "Eater of Worlds")):
-            im_ = getattr(em, side_)
-            if im_:
-                dom = " (доминирует)" if em.dominance() == side_ else ""
-                c.insert("end", f"{title_} [{inf.ELDRITCH_TIERS[im_.level]}]{dom}: ", "m")
-                c.insert("end", im_.text + "\n", "craft")
-        if em.influences or em.exarch or em.eater:
-            c.insert("end", "\n")
-        if not em.mods:
-            c.insert("end", "Модов нет.\n", "m")
-        for kind, title in (("prefix", "Префиксы"), ("suffix", "Суффиксы")):
-            mods = [m for m in em.mods if m.kind == kind]
-            if not mods:
-                continue
-            c.insert("end", title + "\n", "h")
-            for m in mods:
-                tag = "craft" if m.crafted else ("veil" if m.veiled else
-                      ("good" if any(t.ok(m.entry) for t in targets) else
-                       ("infl" if inf.is_influence_mod(m.mod) else None)))
-                tier = "крафт" if m.crafted else ("скрыт" if m.veiled else f"T{m.entry.tier}")
-                c.insert("end", f"  {tier:<6}", "m")
-                c.insert("end", m.text + "\n", tag or ())
-            c.insert("end", "\n")
-        if targets:
-            ch = em.chances(targets)
-            c.insert("end", f"Цели: {ch['have']}/{ch['need']}", "h")
-            if ch["missing"]:
-                c.insert("end", "  · не хватает: " + ", ".join(ch["missing"]) + "\n", "m")
-                for key, label in (("augment", "Augmentation"), ("regal", "Regal"), ("exalt", "Exalt"),
-                                   ("exalt_blocked", "Exalt с блоком другого типа слота"),
-                                   ("exalt_no_attack", "Exalt + «Cannot roll Attack»"),
-                                   ("exalt_no_caster", "Exalt + «Cannot roll Caster»")):
-                    if key in ch:
-                        c.insert("end", f"  {label}: ", "m")
-                        c.insert("end", f"{pct(ch[key])}\n", "good" if ch[key] >= 0.2 else ())
-            else:
-                c.insert("end", "  · всё на месте!\n", "good")
-        total = sum(self.prices.get(k) * v for k, v in em.spent.items())
-        parts_ = [f"{k.replace('Orb of ', '').replace(' Orb', '')}: {v}" for k, v in em.spent.items() if v]
-        c.insert("end", "\nПотрачено: ", "h")
-        st = icons.store()
-        if not parts_:
-            c.insert("end", "ничего", "m")
-        for i, (k, v) in enumerate((k, v) for k, v in em.spent.items() if v):
-            img = st.get(k, 20) if st else None
-            if img is not None:
-                c.image_create("end", image=img, padx=2)
-                c.insert("end", f"×{v}  ", "m")
-            else:
-                c.insert("end", f"{k.replace('Orb of ', '').replace(' Orb', '')}: {v}  ", "m")
-        if parts_:
-            c.insert("end", f"  ≈ {total:,.0f}c ({total / self.prices.divine:.2f} div)".replace(",", " "), "m")
-        c.configure(state="disabled")
+        ch = em.chances(targets) if targets else None
+        self.emu_card.render(em, targets, self.prices, self._emu_steps, ch)
+
+    STEP_ICONS = {
+        "transmute": ("Orb of Transmutation", "Transmutation"), "alteration": ("Orb of Alteration", "Alteration"),
+        "augment": ("Orb of Augmentation", "Augmentation"), "regal": ("Regal Orb", "Regal"),
+        "alchemy": ("Orb of Alchemy", "Alchemy"), "chaos": ("Chaos Orb", "Chaos"), "exalt": ("Exalted Orb", "Exalted"),
+        "annul": ("Orb of Annulment", "Annulment"), "scour": ("Orb of Scouring", "Scouring"),
+        "divine": ("Divine Orb", "Divine"), "eldritch_chaos": ("Eldritch Chaos Orb", "Eldritch Chaos"),
+        "eldritch_exalt": ("Eldritch Exalted Orb", "Eldritch Exalt"),
+        "eldritch_annul": ("Eldritch Orb of Annulment", "Eldritch Annul"), "conflict": ("Orb of Conflict", "Conflict"),
+        "veiled_chaos": ("Veiled Chaos Orb", "Veiled Chaos"), "veiled_exalt": ("Veiled Exalted Orb", "Veiled Exalt"),
+        "unveil": ("Veiled Chaos Orb", "Unveil у Jun"), "remove_crafted": ("", "Снять крафты верстака"),
+        "harvest_reforge": ("Wild Crystallised Lifeforce", "Harvest Reforge"),
+        "harvest_same": ("Wild Crystallised Lifeforce", "Harvest: те же моды"),
+        "harvest_augment": ("Wild Crystallised Lifeforce", "Harvest +мод/−мод"),
+    }
+
+    def _step_of(self, action, kw):
+        if action == "essence":
+            return kw["essence"].name, kw["essence"].name
+        if action == "fossils":
+            names = [f.name for f in kw["fossils"]]
+            return names[0], " + ".join(names)
+        if action == "conqueror":
+            return kw["name"], inf.CONQUEROR_ORBS.get(kw["name"], kw["name"])
+        if action == "eldritch_currency":
+            side = "Exarch" if kw.get("side") == "exarch" else "Eater"
+            return side, f"{inf.ELDRITCH_TIERS.get(kw.get('level'), '')} {'Ember' if side == 'Exarch' else 'Ichor'}"
+        if action == "bench":
+            return "", "Верстак: " + kw["option"]["mod"].text.splitlines()[0]
+        icon, label = self.STEP_ICONS.get(action, ("", action))
+        if kw.get("label"):
+            label += f" ({kw['label']})"
+        return icon, label
+
+    def emu_rewind(self, n_steps: int):
+        """Откатиться к состоянию после шага n (1 — после первого действия)."""
+        if not self.emu:
+            return
+        try:
+            while len(self._emu_steps) > n_steps:
+                self.emu.undo()
+                self._emu_steps.pop()
+        except CraftError:
+            self._emu_steps = self._emu_steps[:n_steps]
+        self.emu_status.configure(text=f"Вернулся к шагу {n_steps}.", fg=MUTED)
+        self._emu_render()
 
     # ------------------------------------------------------------ сокеты
     def _build_sockets(self):

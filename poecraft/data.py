@@ -150,6 +150,11 @@ class GameData:
         return out
 
     @cached_property
+    def base_raw(self) -> dict:
+        """Сырые записи base_items по id: картинка (visual_identity), имплициты, размер в инвентаре."""
+        return self._load("base_items")
+
+    @cached_property
     def bench(self) -> list[dict]:
         """Крафты верстака, добавляющие мод: текст, префикс/суффикс, группы, классы, цена."""
         raw_mods = self._load("mods")

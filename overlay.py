@@ -123,8 +123,10 @@ class Overlay:
         # Заголовок карточки: цвет по редкости предмета, за него таскаем окно
         self.head = tk.Frame(r, bg=BG2)
         self.head.pack(fill="x")
+        self.art_lbl = tk.Label(self.head, bg=BG2)
         hl = tk.Frame(self.head, bg=BG2)
         hl.pack(side="left", fill="x", expand=True, padx=10, pady=(5, 5))
+        self._head_text = hl
         self.title_lbl = tk.Label(hl, text="⚒ PoE Craft Helper", bg=BG2, fg=GOLD, font=(FONT, 11, "bold"),
                                   anchor="w")
         self.title_lbl.pack(fill="x")
@@ -612,8 +614,14 @@ class Overlay:
                 for pm, e in zip(item.mods, st.entries):
                     ok = any((e and w.matches(e)) or (not e and w.matches_text(pm.text)) for w in goal.wanted)
                     tier = f"T{e.tier}" if e else ("крафт" if pm.crafted else "T?")
-                    mods.append(("П" if pm.kind == "prefix" else "С", tier, pm.text, ok))
+                    q = None
+                    if e is not None:
+                        from itemcard import roll_quality
+                        from poecraft.emulator import VALUE_IN_LINE
+                        q = roll_quality(e.mod.text, [float(v) for l in pm.lines for v in VALUE_IN_LINE.findall(l)])
+                    mods.append(("П" if pm.kind == "prefix" else "С", tier, pm.text, ok, q))
             base = st.pool.base.name if st else item.base_name
+            self._last_base = st.pool.base if st else None
             self.results.put(("result", item, base, mods, adv))
         except (ParseError, ValueError) as e:
             self.results.put(("status", f"Ошибка: {e}"))
@@ -656,6 +664,7 @@ class Overlay:
         if item.corrupted:
             sub.append("осквернён")
         self._paint_head(hb, hf, GOLD_LINE if item.rarity == "Rare" else LINE)
+        self._paint_art(hb)
         self.title_lbl.configure(text=name)
         self.sub_lbl.configure(text="  ·  ".join(str(x) for x in sub if x))
 
@@ -672,13 +681,17 @@ class Overlay:
                      bg=BG, fg=GOOD if free else DIM, font=(FONT, 8)).pack(side="left", padx=6)
             if not part:
                 tk.Label(self.mods_frame, text="—", bg=BG, fg=DIM, font=(FONT, 9), anchor="w").pack(fill="x")
-            for _, tier, text, ok in part:
+            for _, tier, text, ok, q in part:
                 row = tk.Frame(self.mods_frame, bg=BG)
                 row.pack(fill="x")
                 tk.Label(row, text="✓" if ok else "·", bg=BG, fg=GOOD if ok else DIM, font=(FONT, 10, "bold"),
                          width=2, anchor="w").pack(side="left")
                 tk.Label(row, text=tier, bg=BG, fg=GOOD if ok else MUTED, font=("Consolas", 9),
-                         width=6, anchor="w").pack(side="right")
+                         width=4, anchor="e").pack(side="right")
+                if q is not None:
+                    from itemcard import quality_color
+                    tk.Label(row, text=f"{q:.0%}", bg=BG, fg=quality_color(q), font=(FONT, 8),
+                             width=5, anchor="e").pack(side="right")
                 tk.Label(row, text=text, bg=BG, fg=FG if ok else MUTED, font=(FONT, 9), anchor="w",
                          justify="left", wraplength=WIDTH - 110).pack(side="left", fill="x")
 
@@ -721,11 +734,26 @@ class Overlay:
         else:
             self.step_icon.pack_forget()
 
+    def _paint_art(self, bg):
+        from poecraft import icons
+        st, base = icons.store(), getattr(self, "_last_base", None)
+        img = None
+        if st and base and self.data:
+            dds = (self.data.base_raw.get(base.id, {}).get("visual_identity") or {}).get("dds_file", "")
+            img = st.base_art(base.id, dds, 40, 48)
+        if img is not None:
+            self.art_lbl.configure(image=img, bg=bg)
+            self.art_lbl._img = img
+            self.art_lbl.pack(side="left", padx=(8, 0), before=self._head_text)
+        else:
+            self.art_lbl.pack_forget()
+
     def _paint_head(self, bg, fg, line):
         for w in self._drag_widgets:
             w.configure(bg=bg)
         for b in self.head_btns:
             b.configure(bg=bg)
+        self.art_lbl.configure(bg=bg)
         self.title_lbl.configure(fg=fg)
         self.rarity_line.configure(bg=line)
 
