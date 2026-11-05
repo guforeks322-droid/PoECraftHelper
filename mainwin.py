@@ -28,6 +28,7 @@ from poecraft.prices import Prices
 
 BG, BG1, BG2, LINE = "#0f0d0a", "#16130f", "#1f1a14", "#3a3127"
 TILE, TILE_HI = "#1a1611", "#2a2116"
+GOLD_LINE = "#6b5124"
 FG, MUTED, GOLD, GOOD, WARN, BLUE = "#d9d0c1", "#8a7f70", "#e3b55b", "#7ec27a", "#e07a5f", "#8fb3e0"
 FONT = "Segoe UI"
 CRAFT_DOMAINS = {"item", "flask", "misc", "abyss_jewel", "affliction_jewel"}
@@ -221,6 +222,12 @@ class MainWindow(tk.Toplevel):
             self._fill_fossils()
             self._fill_essences()
             self._paint_influence()
+            for w, n, sz in getattr(self, "_iconed_fixed", []):
+                if w.winfo_exists():
+                    img = self._row_icon(n, sz)
+                    if img is not None:
+                        w.configure(image=img, text="", width=sz + 4, height=sz + 4)
+                        w._img = img
             if self.emu:
                 self.emu_card._prev = None
                 self._emu_render()
@@ -590,140 +597,96 @@ class MainWindow(tk.Toplevel):
 
     # ------------------------------------------------------------ эмулятор
     def _build_emu(self):
+        """Эмулятор в раскладке Craft of Exile: предмет слева, валюта и вкладки действий в центре,
+        цели и журнал справа."""
         f = self.tab_emu
         self.emu: Emulator | None = None
-        f.columnconfigure(0, weight=5)
-        f.columnconfigure(1, weight=3)
-        f.columnconfigure(2, weight=3)
+        self._emu_steps: list = []
+        f.columnconfigure(0, weight=0, minsize=440)
+        f.columnconfigure(1, weight=1)
+        f.columnconfigure(2, weight=0, minsize=330)
         f.rowconfigure(1, weight=1)
 
+        # ---- панель инструментов
         top = tk.Frame(f, bg=BG)
-        top.grid(row=0, column=0, columnspan=3, sticky="we", padx=6, pady=(8, 4))
+        top.grid(row=0, column=0, columnspan=3, sticky="we", padx=6, pady=(8, 6))
         self._act(top, "Новый белый предмет", self.emu_new).pack(side="left")
-        self._act(top, "Предмет из игры", self.emu_from_clipboard).pack(side="left", padx=(6, 0))
-        self._btn(top, "↶ отменить", lambda: self.emu_do("undo")).pack(side="left", padx=(10, 0))
+        self._act(top, "⇩ Предмет из игры", self.emu_from_clipboard).pack(side="left", padx=(6, 0))
+        tk.Frame(top, bg=LINE, width=1, height=22).pack(side="left", padx=10)
+        self._btn(top, "↶ шаг назад", lambda: self.emu_do("undo")).pack(side="left")
+        self._btn(top, "⟲ к началу", lambda: self.emu_rewind(0)).pack(side="left", padx=(4, 0))
         self.emu_status = tk.Label(top, text="Выбери базу сверху и нажми «Новый белый предмет».", bg=BG, fg=MUTED,
-                                   font=(FONT, 9))
-        self.emu_status.pack(side="left", padx=10)
+                                   font=(FONT, 9), anchor="w")
+        self.emu_status.pack(side="left", padx=12, fill="x", expand=True)
 
+        # ---- слева: предмет
         from itemcard import ItemCard
         self.emu_card = ItemCard(f, self.data, on_rewind=self.emu_rewind)
         self.emu_card.on_tip = lambda t: t and self.emu_status.configure(text=t, fg=MUTED)
-        self.emu_card.grid(row=1, column=0, sticky="nsew", padx=(6, 4), pady=(0, 6))
-        self._emu_steps: list[tuple[str, str]] = []
+        self.emu_card.grid(row=1, column=0, sticky="nsew", padx=(6, 6), pady=(0, 6))
 
-        side = tk.Frame(f, bg=BG)
-        side.grid(row=1, column=1, sticky="nsew", padx=(4, 6), pady=(0, 6))
-        tk.Label(side, text="Валюта", bg=BG, fg=GOLD, font=(FONT, 10, "bold"), anchor="w").pack(fill="x")
-        grid = tk.Frame(side, bg=BG)
-        grid.pack(fill="x", pady=(2, 6))
+        # ---- центр: валюта + вкладки
+        mid = tk.Frame(f, bg=BG)
+        mid.grid(row=1, column=1, sticky="nsew", padx=4, pady=(0, 6))
+        self._cap(mid, "Валюта")
+        grid = tk.Frame(mid, bg=BG)
+        grid.pack(fill="x", pady=(2, 8))
         buttons = [("Transmutation", "transmute", "Transmute"), ("Alteration", "alteration", "Alteration"),
                    ("Augmentation", "augment", "Augment"), ("Regal", "regal", "Regal"),
                    ("Alchemy", "alchemy", "Alchemy"), ("Chaos", "chaos", "Chaos"), ("Exalted", "exalt", "Exalted"),
                    ("Annulment", "annul", "Annul"), ("Scouring", "scour", "Scour"), ("Divine", "divine", "Divine")]
         for i, (name, act, label) in enumerate(buttons):
-            self._tile(grid, name, label, lambda a=act: self.emu_do(a)).grid(row=i // 5, column=i % 5, sticky="we",
-                                                                          padx=2, pady=2)
+            self._tile(grid, name, label, lambda a=act: self.emu_do(a), tip=self.STEP_TIPS.get(act, "")).grid(
+                row=i // 5, column=i % 5, sticky="we", padx=2, pady=2)
         for c in range(5):
             grid.columnconfigure(c, weight=1, uniform="cur")
 
-        tk.Label(side, text="Эссенция", bg=BG, fg=GOLD, font=(FONT, 10, "bold"), anchor="w").pack(fill="x", pady=(4, 0))
-        er = tk.Frame(side, bg=BG)
-        er.pack(fill="x")
-        self.emu_ess_var = tk.StringVar()
-        self.emu_ess_box = ttk.Combobox(er, textvariable=self.emu_ess_var, state="readonly", style="D.TCombobox",
-                                        font=(FONT, 9), width=28)
-        popdown_on_top(self.emu_ess_box)
-        self.emu_ess_box.pack(side="left", fill="x", expand=True)
-        self._btn(er, "применить", self.emu_essence).pack(side="left")
-        self.emu_ess_grid = tk.Frame(side, bg=BG)
-        self.emu_ess_grid.pack(fill="x", pady=(3, 0))
+        tabs = tk.Frame(mid, bg=BG)
+        tabs.pack(fill="x")
+        tk.Frame(mid, bg=GOLD_LINE, height=1).pack(fill="x")
+        self.emu_page = tk.Frame(mid, bg=BG1, highlightthickness=0)
+        self.emu_page.pack(fill="both", expand=True)
+        self._emu_tabs, self._emu_pages = {}, {}
+        for key, icon, label in (("ess", "Deafening Essence of Greed", "Эссенции"), ("fos", "Pristine Fossil", "Фоссилы"),
+                                 ("inf", "Crusader", "Влияние"), ("eld", "Exarch", "Eldritch"),
+                                 ("hv", "Wild Crystallised Lifeforce", "Harvest"), ("veil", "Veiled Chaos Orb", "Veiled"),
+                                 ("bench", "", "Верстак")):
+            t = tk.Label(tabs, text=" " + label, bg=BG, fg=MUTED, font=(FONT, 9), compound="left", padx=3, pady=4,
+                         cursor="hand2", anchor="w")
+            n = len(self._emu_tabs)
+            t.grid(row=n // 4, column=n % 4, sticky="we")
+            tabs.columnconfigure(n % 4, weight=1, uniform="tabs")
+            if icon:
+                self._icon(t, icon, 18)
+            t.bind("<Button-1>", lambda e, k=key: self._emu_tab(k))
+            t.bind("<Enter>", lambda e, w=t, k=key: k != self._emu_cur and w.configure(fg=FG))
+            t.bind("<Leave>", lambda e, w=t, k=key: k != self._emu_cur and w.configure(fg=MUTED))
+            self._emu_tabs[key] = t
+            page = tk.Frame(self.emu_page, bg=BG1)
+            self._emu_pages[key] = page
+        self._emu_cur = None
+        self._page_ess(self._emu_pages["ess"])
+        self._page_fos(self._emu_pages["fos"])
+        self._page_inf(self._emu_pages["inf"])
+        self._page_eld(self._emu_pages["eld"])
+        self._page_hv(self._emu_pages["hv"])
+        self._page_veil(self._emu_pages["veil"])
+        self._page_bench(self._emu_pages["bench"])
+        self._emu_tab(self.settings.get("emu_tab", "ess"))
 
-        tk.Label(side, text="Фоссилы (выбираются во вкладке «Эссенции и фоссилы»)", bg=BG, fg=GOLD,
-                 font=(FONT, 9, "bold"), anchor="w", wraplength=300, justify="left").pack(fill="x", pady=(6, 0))
-        fr = tk.Frame(side, bg=BG)
-        fr.pack(fill="x")
-        self.emu_fos_lbl = tk.Label(fr, text="не выбраны", bg=BG, fg=MUTED, font=(FONT, 9), anchor="w")
-        self.emu_fos_lbl.pack(side="left", fill="x", expand=True)
-        self._btn(fr, "применить", self.emu_fossils).pack(side="left")
-
-        tk.Label(side, text="Верстак", bg=BG, fg=GOLD, font=(FONT, 10, "bold"), anchor="w").pack(fill="x", pady=(6, 0))
-        br = tk.Frame(side, bg=BG)
-        br.pack(fill="x")
-        self.emu_bench_var = tk.StringVar()
-        self.emu_bench_box = ttk.Combobox(br, textvariable=self.emu_bench_var, state="readonly", style="D.TCombobox",
-                                          font=(FONT, 9), width=28)
-        popdown_on_top(self.emu_bench_box)
-        self.emu_bench_box.pack(side="left", fill="x", expand=True)
-        self._btn(br, "скрафтить", self.emu_bench).pack(side="left")
-        self._btn(side, "снять крафты верстака", lambda: self.emu_do("remove_crafted")).pack(anchor="w")
-
-        side2 = tk.Frame(f, bg=BG)
-        side2.grid(row=1, column=2, sticky="nsew", padx=(4, 6), pady=(0, 6))
-        tk.Label(side2, text="Влияние · Eldritch", bg=BG, fg=GOLD, font=(FONT, 10, "bold"), anchor="w").pack(fill="x", pady=(0, 0))
-        ir = tk.Frame(side2, bg=BG)
-        ir.pack(fill="x", pady=(2, 0))
-        for i, name in enumerate(inf.CONQUEROR_ORBS):
-            self._tile(ir, name, name, lambda n=name: self.emu_do("conqueror", name=n),
-                       tip=f"{inf.CONQUEROR_ORBS[name]}: добавляет мод влияния {name}").grid(
-                row=0, column=i, sticky="we", padx=2, pady=2)
-            ir.columnconfigure(i, weight=1, uniform="cq")
-        er2 = tk.Frame(side2, bg=BG)
-        er2.pack(fill="x", pady=(4, 0))
-        self.emu_eld_var = tk.StringVar(value="Grand")
-        eb = ttk.Combobox(er2, textvariable=self.emu_eld_var, state="readonly", style="D.TCombobox",
-                          values=[inf.ELDRITCH_TIERS[i] for i in (1, 2, 3, 4)], width=9, font=(FONT, 9))
-        popdown_on_top(eb)
-        eb.pack(side="left", padx=(0, 4))
-        lvl = lambda: {v: k for k, v in inf.ELDRITCH_TIERS.items()}[self.emu_eld_var.get()]
-        for side_key, name, label in (("exarch", "Exarch", "Ember"), ("eater", "Eater", "Ichor")):
-            t = self._tile(er2, name, label, lambda k=side_key: self.emu_do("eldritch_currency", side=k, level=lvl()),
-                           size=24, compact=True, tip=f"Eldritch {label}: имплицит {'Searing Exarch' if side_key == 'exarch' else 'Eater of Worlds'}")
-            t.pack(side="left", padx=2, fill="x", expand=True)
-        eg = tk.Frame(side2, bg=BG)
-        eg.pack(fill="x", pady=(2, 0))
-        for i, (name, act, label) in enumerate((("Eldritch Chaos", "eldritch_chaos", "Chaos"),
-                                                ("Eldritch Exalt", "eldritch_exalt", "Exalt"),
-                                                ("Eldritch Annul", "eldritch_annul", "Annul"),
-                                                ("Orb of Conflict", "conflict", "Conflict"))):
-            self._tile(eg, name, label, lambda a=act: self.emu_do(a), tip=name).grid(
-                row=0, column=i, sticky="we", padx=2, pady=2)
-            eg.columnconfigure(i, weight=1, uniform="eg")
-        tk.Label(side2, text="Harvest", bg=BG, fg=GOLD, font=(FONT, 10, "bold"), anchor="w").pack(fill="x", pady=(8, 0))
-        hr = tk.Frame(side2, bg=BG)
-        hr.pack(fill="x")
-        from poecraft.harvest import HARVEST
-        self.emu_hv_var = tk.StringVar(value="Fire")
-        hb = ttk.Combobox(hr, textvariable=self.emu_hv_var, state="readonly", style="D.TCombobox",
-                          values=list(HARVEST), width=10, font=(FONT, 9))
-        popdown_on_top(hb)
-        hb.pack(side="left")
-        self._btn(hr, "Reforge", lambda: self.emu_do("harvest_reforge", label=self.emu_hv_var.get())).pack(side="left")
-        self._btn(hr, "+мод/−мод", lambda: self.emu_do("harvest_augment", label=self.emu_hv_var.get())).pack(side="left")
-        hr2 = tk.Frame(side2, bg=BG)
-        hr2.pack(fill="x")
-        self._btn(hr2, "тех же модов ↑", lambda: self.emu_do("harvest_same", more=True)).pack(side="left")
-        self._btn(hr2, "тех же модов ↓", lambda: self.emu_do("harvest_same", more=False)).pack(side="left")
-
-        tk.Label(side2, text="Veiled (Jun)", bg=BG, fg=GOLD, font=(FONT, 10, "bold"), anchor="w").pack(fill="x", pady=(8, 0))
-        vg = tk.Frame(side2, bg=BG)
-        vg.pack(fill="x")
-        for i, (name, label, cmd) in enumerate((("Veiled Chaos", "Veiled Chaos", lambda: self.emu_do("veiled_chaos")),
-                                                ("Veiled Exalt", "Veiled Exalt", lambda: self.emu_do("veiled_exalt")),
-                                                ("Unveil", "Unveil (1 из 3)", self.emu_unveil))):
-            self._tile(vg, name, label, cmd, size=24, compact=True).grid(row=0, column=i, sticky="we", padx=2, pady=2)
-            vg.columnconfigure(i, weight=1, uniform="vg")
-        self.emu_unveil_frame = tk.Frame(side2, bg=BG)
-        self.emu_unveil_frame.pack(fill="x", pady=(4, 0))
-
-        # журнал: что каждое действие добавило / убрало / изменило
-        jh = tk.Frame(side2, bg=BG)
-        jh.pack(fill="x", pady=(10, 0))
-        tk.Label(jh, text="Журнал крафта", bg=BG, fg=GOLD, font=(FONT, 10, "bold"), anchor="w").pack(side="left")
+        # ---- справа: цели и журнал
+        right = tk.Frame(f, bg=BG)
+        right.grid(row=1, column=2, sticky="nsew", padx=(6, 6), pady=(0, 6))
+        self._cap(right, "Цели")
+        self.emu_goals = tk.Frame(right, bg=BG1, highlightthickness=1, highlightbackground=LINE)
+        self.emu_goals.pack(fill="x", pady=(2, 10))
+        jh = tk.Frame(right, bg=BG)
+        jh.pack(fill="x")
+        self._cap(jh, "Журнал крафта", side="left")
         tk.Label(jh, text="клик по шагу — откат", bg=BG, fg=MUTED, font=(FONT, 8)).pack(side="right")
-        jf = tk.Frame(side2, bg=BG1, highlightthickness=1, highlightbackground=LINE)
+        jf = tk.Frame(right, bg=BG1, highlightthickness=1, highlightbackground=LINE)
         jf.pack(fill="both", expand=True, pady=(2, 0))
-        self.emu_journal = tk.Text(jf, bg=BG1, fg=FG, relief="flat", wrap="word", font=(FONT, 9), width=34,
+        self.emu_journal = tk.Text(jf, bg=BG1, fg=FG, relief="flat", wrap="word", font=(FONT, 9), width=36,
                                    height=8, padx=6, pady=4, cursor="arrow", highlightthickness=0)
         jsb = ttk.Scrollbar(jf, orient="vertical", command=self.emu_journal.yview, style="D.Vertical.TScrollbar")
         self.emu_journal.configure(yscrollcommand=jsb.set)
@@ -731,12 +694,216 @@ class MainWindow(tk.Toplevel):
         self.emu_journal.pack(side="left", fill="both", expand=True)
         for tag, kw in (("step", dict(foreground=GOLD, font=(FONT, 9, "bold"))), ("add", dict(foreground=GOOD)),
                         ("del", dict(foreground=WARN, overstrike=True)), ("chg", dict(foreground="#e8c860")),
-                        ("m", dict(foreground=MUTED, font=(FONT, 8))), ("cur", dict(background="#2a2116"))):
+                        ("m", dict(foreground=MUTED, font=(FONT, 8)))):
             self.emu_journal.tag_configure(tag, **kw)
         self.emu_journal.configure(state="disabled")
-        self.emu_spent = tk.Label(side, text="", bg=BG, fg=FG, font=(FONT, 9), anchor="w", justify="left",
-                                  wraplength=320)
-        # потраченное теперь выводится в карточке предмета
+
+    STEP_TIPS = {
+        "transmute": "Transmutation: обычный → магический (1–2 мода)",
+        "alteration": "Alteration: перекатить магический предмет",
+        "augment": "Augmentation: добавить мод магическому предмету",
+        "regal": "Regal: магический → редкий, +1 мод",
+        "alchemy": "Alchemy: обычный → редкий (4–6 модов)",
+        "chaos": "Chaos: перекатить редкий предмет полностью",
+        "exalt": "Exalted: добавить случайный мод редкому предмету",
+        "annul": "Annulment: убрать случайный мод",
+        "scour": "Scouring: убрать все моды (кроме фрактуров)",
+        "divine": "Divine: перекатить значения модов внутри их тиров",
+    }
+
+    def _cap(self, parent, text, side=None):
+        l = tk.Label(parent, text=text.upper(), bg=parent["bg"], fg=GOLD, font=(FONT, 9, "bold"), anchor="w")
+        l.pack(side=side) if side else l.pack(fill="x")
+        return l
+
+    def _emu_tab(self, key):
+        if key not in self._emu_pages:
+            key = "ess"
+        if self._emu_cur:
+            self._emu_pages[self._emu_cur].pack_forget()
+        self._emu_cur = key
+        self._emu_pages[key].pack(fill="both", expand=True, padx=8, pady=8)
+        for k, t in self._emu_tabs.items():
+            t.configure(fg=GOLD if k == key else MUTED, bg=BG1 if k == key else BG)
+        self.settings["emu_tab"] = key
+
+    def _note(self, parent, text):
+        l = tk.Label(parent, text=text, bg=parent["bg"], fg=MUTED, font=(FONT, 8), anchor="w", justify="left",
+                     wraplength=330)
+        l.bind("<Configure>", lambda e: l.configure(wraplength=max(200, e.width - 8)))
+        return l
+
+    # ---- вкладки действий
+    def _page_ess(self, p):
+        self._note(p, "Клик по иконке — лучший доступный тир этой эссенции. Нужен другой тир — выбери в списке.").pack(fill="x")
+        self.emu_ess_grid = tk.Frame(p, bg=BG1)
+        self.emu_ess_grid.pack(fill="x", pady=6)
+        er = tk.Frame(p, bg=BG1)
+        er.pack(fill="x")
+        self.emu_ess_var = tk.StringVar()
+        self.emu_ess_box = ttk.Combobox(er, textvariable=self.emu_ess_var, state="readonly", style="D.TCombobox",
+                                        font=(FONT, 9))
+        popdown_on_top(self.emu_ess_box)
+        self.emu_ess_box.pack(side="left", fill="x", expand=True)
+        self._act(er, "Применить", self.emu_essence).pack(side="left", padx=(6, 0))
+
+    def _page_fos(self, p):
+        self._note(p, "Выбери до 4 фоссилов (клик — выбрать/снять), затем «Применить». "
+                      "Резонатор подберётся сам.").pack(fill="x")
+        self.emu_fos_grid = tk.Frame(p, bg=BG1)
+        self.emu_fos_grid.pack(fill="x", pady=6)
+        self._emu_fos_tiles = {}
+        for i, name in enumerate(self.fos_list):
+            t = tk.Label(self.emu_fos_grid, text=name.replace(" Fossil", "")[:5], bg=TILE, fg=MUTED, font=(FONT, 7),
+                         cursor="hand2", highlightthickness=2, highlightbackground=TILE, width=4, height=2)
+            t.grid(row=i // 9, column=i % 9, padx=1, pady=1)
+            fo = self.fos_list[name]
+            tip = f"{name}: {fo.describe} · {self._price_txt(name)}"
+            t.bind("<Button-1>", lambda e, n=name: self._emu_fos_toggle(n))
+            t.bind("<Enter>", lambda e, tp=tip: self.emu_status.configure(text=tp, fg=MUTED))
+            self._emu_fos_tiles[name] = t
+            self._icon_fixed(t, name, 30)
+        r = tk.Frame(p, bg=BG1)
+        r.pack(fill="x")
+        self.emu_fos_lbl = tk.Label(r, text="не выбраны", bg=BG1, fg=FG, font=(FONT, 9), anchor="w",
+                                    justify="left", wraplength=260)
+        self.emu_fos_lbl.pack(side="left", fill="x", expand=True)
+        self._btn(r, "сброс", self._emu_fos_clear).pack(side="right")
+        self._act(r, "Применить", self.emu_fossils).pack(side="right", padx=(0, 6))
+
+    def _icon_fixed(self, widget, name, size):
+        """Иконка в квадратной плитке: без картинки — текст, с картинкой — фиксированный размер в пикселях."""
+        self._iconed_fixed = getattr(self, "_iconed_fixed", [])
+        self._iconed_fixed.append((widget, name, size))
+        img = self._row_icon(name, size)
+        if img is not None:
+            widget.configure(image=img, text="", width=size + 4, height=size + 4)
+            widget._img = img
+
+    def _emu_fos_toggle(self, name):
+        if name in self.fos_sel:
+            self.fos_sel.remove(name)
+        elif len(self.fos_sel) < 4:
+            self.fos_sel.append(name)
+        else:
+            self.emu_status.configure(text="Максимум 4 фоссила.", fg=WARN)
+        self._emu_fos_paint()
+        self._fill_fossils()
+
+    def _emu_fos_clear(self):
+        self.fos_sel.clear()
+        self._emu_fos_paint()
+        self._fill_fossils()
+
+    def _emu_fos_paint(self):
+        for n, t in getattr(self, "_emu_fos_tiles", {}).items():
+            t.configure(highlightbackground=GOLD if n in self.fos_sel else TILE)
+        if hasattr(self, "emu_fos_lbl"):
+            self.emu_fos_lbl.configure(text=", ".join(n.replace(" Fossil", "") for n in self.fos_sel) or "не выбраны")
+
+    def _page_inf(self, p):
+        self._note(p, "Exalt завоевателя добавляет мод своего влияния и делает предмет влиятельным. "
+                      "Shaper и Elder выбираются в поле «влияние» сверху.").pack(fill="x")
+        ir = tk.Frame(p, bg=BG1)
+        ir.pack(fill="x", pady=6)
+        for i, name in enumerate(inf.CONQUEROR_ORBS):
+            self._tile(ir, name, name, lambda n=name: self.emu_do("conqueror", name=n),
+                       tip=f"{inf.CONQUEROR_ORBS[name]}: добавляет мод влияния {name}").grid(
+                row=0, column=i, sticky="we", padx=2, pady=2)
+            ir.columnconfigure(i, weight=1, uniform="cq")
+
+    def _page_eld(self, p):
+        self._note(p, "Ember — имплицит Searing Exarch, Ichor — Eater of Worlds (только броня: шлем, "
+                      "перчатки, ботинки, нагрудник). Chaos/Exalt/Annul действуют на сторону доминирующего.").pack(fill="x")
+        er = tk.Frame(p, bg=BG1)
+        er.pack(fill="x", pady=6)
+        tk.Label(er, text="тир", bg=BG1, fg=MUTED, font=(FONT, 9)).pack(side="left")
+        self.emu_eld_var = tk.StringVar(value="Grand")
+        eb = ttk.Combobox(er, textvariable=self.emu_eld_var, state="readonly", style="D.TCombobox",
+                          values=[inf.ELDRITCH_TIERS[i] for i in (1, 2, 3, 4)], width=10, font=(FONT, 9))
+        popdown_on_top(eb)
+        eb.pack(side="left", padx=6)
+        lvl = lambda: {v: k for k, v in inf.ELDRITCH_TIERS.items()}[self.emu_eld_var.get()]
+        for side_key, name, label in (("exarch", "Exarch", "Ember"), ("eater", "Eater", "Ichor")):
+            self._tile(er, name, label, lambda k=side_key: self.emu_do("eldritch_currency", side=k, level=lvl()),
+                       size=24, compact=True).pack(side="left", padx=2, fill="x", expand=True)
+        eg = tk.Frame(p, bg=BG1)
+        eg.pack(fill="x")
+        for i, (name, act, label) in enumerate((("Eldritch Chaos", "eldritch_chaos", "Chaos"),
+                                                ("Eldritch Exalt", "eldritch_exalt", "Exalt"),
+                                                ("Eldritch Annul", "eldritch_annul", "Annul"),
+                                                ("Orb of Conflict", "conflict", "Conflict"))):
+            self._tile(eg, name, label, lambda a=act: self.emu_do(a), tip=name).grid(
+                row=0, column=i, sticky="we", padx=2, pady=2)
+            eg.columnconfigure(i, weight=1, uniform="eg")
+
+    def _page_hv(self, p):
+        from poecraft.harvest import HARVEST
+        self._note(p, "Reforge — перекат с гарантированным модом выбранного тега. "
+                      "«+мод/−мод» — добавить мод тега, убрав другой.").pack(fill="x")
+        hr = tk.Frame(p, bg=BG1)
+        hr.pack(fill="x", pady=6)
+        tk.Label(hr, text="тег", bg=BG1, fg=MUTED, font=(FONT, 9)).pack(side="left")
+        self.emu_hv_var = tk.StringVar(value="Fire")
+        hb = ttk.Combobox(hr, textvariable=self.emu_hv_var, state="readonly", style="D.TCombobox",
+                          values=list(HARVEST), width=14, font=(FONT, 9))
+        popdown_on_top(hb)
+        hb.pack(side="left", padx=6)
+        hg = tk.Frame(p, bg=BG1)
+        hg.pack(fill="x")
+        for i, (label, cmd) in enumerate((
+                ("Reforge", lambda: self.emu_do("harvest_reforge", label=self.emu_hv_var.get())),
+                ("+мод / −мод", lambda: self.emu_do("harvest_augment", label=self.emu_hv_var.get())),
+                ("те же моды ↑", lambda: self.emu_do("harvest_same", more=True)),
+                ("те же моды ↓", lambda: self.emu_do("harvest_same", more=False)))):
+            self._tile(hg, "Wild Crystallised Lifeforce", label, cmd, size=20, compact=True).grid(
+                row=i // 2, column=i % 2, sticky="we", padx=2, pady=2)
+        hg.columnconfigure(0, weight=1, uniform="hv")
+        hg.columnconfigure(1, weight=1, uniform="hv")
+
+    def _page_veil(self, p):
+        self._note(p, "Veiled Chaos/Exalt дают скрытый мод, у Jun можно выбрать 1 из 3 вариантов.").pack(fill="x")
+        vg = tk.Frame(p, bg=BG1)
+        vg.pack(fill="x", pady=6)
+        for i, (name, label, cmd) in enumerate((("Veiled Chaos", "Veiled Chaos", lambda: self.emu_do("veiled_chaos")),
+                                                ("Veiled Exalt", "Veiled Exalt", lambda: self.emu_do("veiled_exalt")),
+                                                ("Unveil", "Unveil (1 из 3)", self.emu_unveil))):
+            self._tile(vg, name, label, cmd).grid(row=0, column=i, sticky="we", padx=2, pady=2)
+            vg.columnconfigure(i, weight=1, uniform="vg")
+        self.emu_unveil_frame = tk.Frame(p, bg=BG1)
+        self.emu_unveil_frame.pack(fill="x", pady=(4, 0))
+
+    def _page_bench(self, p):
+        sr = tk.Frame(p, bg=BG1)
+        sr.pack(fill="x")
+        tk.Label(sr, text="поиск", bg=BG1, fg=MUTED, font=(FONT, 9)).pack(side="left")
+        self.emu_bench_q = tk.StringVar()
+        self._entry(sr, self.emu_bench_q, 20).pack(side="left", fill="x", expand=True, padx=6)
+        self.emu_bench_q.trace_add("write", lambda *a: self._emu_bench_fill())
+        lf = tk.Frame(p, bg=BG1)
+        lf.pack(fill="both", expand=True, pady=6)
+        self.emu_bench_lb = tk.Listbox(lf, bg=BG2, fg=FG, selectbackground="#3a2c17", selectforeground=GOLD,
+                                       relief="flat", font=(FONT, 9), activestyle="none", highlightthickness=0,
+                                       height=10)
+        sb = ttk.Scrollbar(lf, orient="vertical", command=self.emu_bench_lb.yview, style="D.Vertical.TScrollbar")
+        self.emu_bench_lb.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        self.emu_bench_lb.pack(side="left", fill="both", expand=True)
+        self.emu_bench_lb.bind("<Double-Button-1>", lambda e: self.emu_bench())
+        self._note(p, "★ — метакрафты. Двойной клик по строке — скрафтить.").pack(fill="x")
+        br = tk.Frame(p, bg=BG1)
+        br.pack(fill="x", pady=(4, 0))
+        self._btn(br, "снять крафты", lambda: self.emu_do("remove_crafted")).pack(side="right")
+        self._act(br, "Скрафтить", self.emu_bench).pack(side="right", padx=6)
+        self._emu_bench = {}
+        self._emu_bench_keys = []
+
+    def _emu_bench_fill(self):
+        q = self.emu_bench_q.get().lower().strip()
+        self._emu_bench_keys = [k for k in self._emu_bench if q in k.lower()]
+        self.emu_bench_lb.delete(0, "end")
+        for k in self._emu_bench_keys:
+            self.emu_bench_lb.insert("end", k)
 
     def emu_new(self):
         if not self.pool:
@@ -822,7 +989,7 @@ class MainWindow(tk.Toplevel):
             cost = ", ".join(f"{v} {CURRENCY_RU.get(k, k).replace('Orb of ', '').replace(' Orb', '')}" for k, v in o["cost"].items())
             return f"{'★ ' if o in metas else ''}{o['mod'].text.splitlines()[0]}  [{cost}]"
         self._emu_bench = {lbl(o): o for o in metas + rest}
-        self.emu_bench_box["values"] = list(self._emu_bench)
+        self._emu_bench_fill()
 
     def _emu_ess_icons(self, ess):
         """Сетка иконок эссенций как на Craft of Exile: по одной на вид, лучший доступный тир."""
@@ -902,12 +1069,14 @@ class MainWindow(tk.Toplevel):
 
     def emu_fossils(self):
         if not self.fos_sel:
-            self.emu_status.configure(text="Выбери фоссилы во вкладке «Эссенции и фоссилы».", fg=WARN)
+            self.emu_status.configure(text="Выбери фоссилы — клик по иконкам на вкладке «Фоссилы».", fg=WARN)
             return
         self.emu_do("fossils", fossils=[self.fos_list[n] for n in self.fos_sel])
 
     def emu_bench(self):
-        o = self._emu_bench.get(self.emu_bench_var.get()) if self.emu else None
+        sel = self.emu_bench_lb.curselection()
+        key = self._emu_bench_keys[sel[0]] if sel and sel[0] < len(self._emu_bench_keys) else None
+        o = self._emu_bench.get(key) if self.emu and key else None
         if not o:
             self.emu_status.configure(text="Выбери крафт верстака в списке.", fg=WARN)
             return
@@ -915,14 +1084,16 @@ class MainWindow(tk.Toplevel):
 
     def _emu_render(self):
         em = self.emu
-        self.emu_fos_lbl.configure(text=", ".join(n.replace(" Fossil", "") for n in self.fos_sel) or "не выбраны")
+        self._emu_fos_paint()
         if not em:
             self.emu_card.render(None)
+            self._emu_goals_render(None, bool(self.selected))
             self._emu_journal_render()
             return
         targets = self._targets()
         ch = em.chances(targets) if targets else None
-        self.emu_card.render(em, targets, self.prices, self._emu_steps, ch)
+        self.emu_card.render(em, targets, self.prices)
+        self._emu_goals_render(ch, bool(targets))
         self._emu_journal_render()
 
     STEP_ICONS = {
@@ -998,6 +1169,22 @@ class MainWindow(tk.Toplevel):
         if not out:
             out.append(("m", "ничего не изменилось"))
         return out
+
+    def _emu_goals_render(self, ch, has_targets):
+        g = self.emu_goals
+        for w in g.winfo_children():
+            w.destroy()
+        if not has_targets:
+            tk.Label(g, text="Отметь нужные моды во вкладке «Пул модов» (☐) — здесь появятся шансы "
+                             "следующего Exalt'а и что ещё не хватает.", bg=BG1, fg=MUTED, font=(FONT, 9),
+                     wraplength=300, justify="left", anchor="w").pack(fill="x", padx=8, pady=8)
+            return
+        if not ch:
+            tk.Label(g, text="Создай предмет, чтобы увидеть шансы.", bg=BG1, fg=MUTED, font=(FONT, 9),
+                     anchor="w").pack(fill="x", padx=8, pady=8)
+            return
+        from itemcard import render_chances
+        render_chances(g, ch, BG1)
 
     def _emu_journal_render(self):
         j = self.emu_journal
