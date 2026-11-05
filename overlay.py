@@ -471,11 +471,11 @@ class Overlay:
                 return
             editors = [w for w in self.root.winfo_children() if isinstance(w, tk.Toplevel)
                        and w.winfo_viewable() and w is not self.hub]
-            if editors:
-                for w in editors:
-                    w.lift()
-            else:
-                self.root.attributes("-topmost", True)
+            from poecraft import winmove
+            for w in editors:              # без lift() — он перерисовывал окна каждые 2 с (мерцание)
+                winmove.ensure_topmost(w)
+            if not editors:
+                winmove.ensure_topmost(self.root)
         except tk.TclError:
             return
         self.root.after(2000, self._keep_on_top)
