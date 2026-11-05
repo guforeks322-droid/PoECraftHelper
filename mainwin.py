@@ -597,6 +597,7 @@ class MainWindow(tk.Toplevel):
         top = tk.Frame(f, bg=BG)
         top.grid(row=0, column=0, columnspan=3, sticky="we", padx=6, pady=(8, 4))
         self._act(top, "Новый белый предмет", self.emu_new).pack(side="left")
+        self._act(top, "Предмет из игры", self.emu_from_clipboard).pack(side="left", padx=(6, 0))
         self._btn(top, "↶ отменить", lambda: self.emu_do("undo")).pack(side="left", padx=(10, 0))
         self.emu_status = tk.Label(top, text="Выбери базу сверху и нажми «Новый белый предмет».", bg=BG, fg=MUTED,
                                    font=(FONT, 9))
@@ -731,6 +732,59 @@ class MainWindow(tk.Toplevel):
         self._emu_lists()
         self.emu_status.configure(text=f"{self.pool.base.name}, ilvl {self.pool.ilvl}", fg=MUTED)
         self._emu_render()
+
+    def emu_from_clipboard(self):
+        try:
+            text = self.clipboard_get()
+        except tk.TclError:
+            text = ""
+        app = getattr(self, "app", None)
+        if not text and app and app.last_text:
+            text = app.last_text
+        self.load_item_text(text)
+
+    def load_item_text(self, text: str):
+        """Предмет, скопированный в игре (Ctrl+Alt+C), — в эмулятор как есть: база, ilvl, влияния, моды."""
+        from poecraft.advisor import Advisor
+        from poecraft.parser import ParseError, looks_like_item, parse_item
+        self.show()
+        self.nb.select(self.tab_emu)
+        if not text or not looks_like_item(text):
+            self.emu_status.configure(text="В буфере нет предмета — наведи на него в игре и нажми Ctrl+Alt+C.", fg=WARN)
+            return
+        try:
+            item = parse_item(text)
+        except (ParseError, ValueError) as e:
+            self.emu_status.configure(text=f"Не понял предмет: {e}", fg=WARN)
+            return
+        base = self.data.find_base_any(item.base_name)
+        if base is None:
+            self.emu_status.configure(text=f"Не нашёл базу «{item.base_name}».", fg=WARN)
+            return
+        self.base_var.set(base.name)
+        self.ilvl_var.set(str(item.ilvl or 84))
+        tags = inf.influence_tags(self.data, base.item_class)
+        one = [i for i in item.influences if i in tags]
+        self.inf_var.set(one[0] if len(one) == 1 else "нет")
+        self._paint_influence()
+        self.load_pool()
+        if not self.pool:
+            return
+        self.emu = Emulator(self.data, self.base_pool, influences=[i for i in item.influences if i in tags])
+        try:
+            unknown = self.emu.load_item(item, Advisor(self.data)._match_mod)
+        except CraftError as e:
+            self.emu = None
+            self.emu_status.configure(text=str(e), fg=WARN)
+            return
+        self._emu_lists()
+        self._emu_render()
+        msg = f"Из игры: {item.name or base.name} · ilvl {item.ilvl}"
+        if item.corrupted:
+            msg += " · осквернён (в игре валюта уже не сработает)"
+        if unknown:
+            msg += f" · не распознано модов: {len(unknown)}"
+        self.emu_status.configure(text=msg, fg=WARN if unknown or item.corrupted else GOOD)
 
     def _emu_lists(self):
         if not self.emu:

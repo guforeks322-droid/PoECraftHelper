@@ -12,6 +12,7 @@ from . import currency_craft as cc
 from . import influence as inf
 
 RANGE_RE = re.compile(r"\((-?[\d.]+)-(-?[\d.]+)\)")
+VALUE_IN_LINE = re.compile(r"(-?\d+(?:\.\d+)?)\(-?[\d.]+-(?:-?[\d.]+)\)")   # «+140(130-144)» → 140
 
 META = {
     "prefix_lock": ("ItemGenerationCannotChangePrefixes", "Prefixes Cannot Be Changed"),
@@ -631,6 +632,40 @@ class Emulator:
         self._begin(None)
         self.mods = [m for m in self.mods if not m.crafted]
         self.log.append("Сняты крафты верстака")
+
+    # ------------------------------------------------------------ предмет из игры
+    def load_item(self, item, match) -> list[str]:
+        """Ставит в эмулятор предмет, скопированный в игре. match(pool, parsed_mod) → PoolEntry|None.
+        Возвращает строки модов, которые не удалось распознать (их на предмете не будет)."""
+        if item.rarity not in ("Normal", "Magic", "Rare"):
+            raise CraftError("В эмулятор можно положить только обычный, магический или редкий предмет.")
+        self.reset()
+        self.rarity = item.rarity
+        unknown: list[str] = []
+        from .parser import canonical
+        bench = None
+        for pm in item.mods:
+            entry = None if pm.crafted else match(self.pool, pm)
+            if entry is None and pm.crafted:
+                if bench is None:
+                    bench = self.bench_options()
+                want = [canonical(l) for l in pm.lines]
+                for o in bench:
+                    lines = [canonical(x) for x in o["mod"].text.split("\n")]
+                    if want and lines[:len(want)] == want:
+                        entry = PoolEntry(o["mod"], 0, 1)
+                        break
+            if entry is None:
+                unknown.append(pm.text)
+                continue
+            im = ItemMod(entry, crafted=pm.crafted, fractured=pm.fractured)
+            vals = [float(v) for l in pm.lines for v in VALUE_IN_LINE.findall(l)]
+            im.values = [int(v) if v.is_integer() else v for v in vals]
+            if len(im.values) != len(RANGE_RE.findall(entry.mod.text)):
+                im.roll_values(self.rng)
+            self.mods.append(im)
+        self.log.append(f"Из игры: {item.name or item.base_name}" + (f" (не распознано: {len(unknown)})" if unknown else ""))
+        return unknown
 
     # ------------------------------------------------------------ подсказки
     def chances(self, targets) -> dict:

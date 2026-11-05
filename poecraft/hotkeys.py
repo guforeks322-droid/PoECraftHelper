@@ -9,7 +9,8 @@ from __future__ import annotations
 import sys
 import threading
 
-DEFAULT_HOTKEYS = {"overlay": "Ctrl+Shift+O", "workshop": "Ctrl+Shift+M", "hub": "Ctrl+Shift+H"}
+DEFAULT_HOTKEYS = {"overlay": "Ctrl+Shift+O", "workshop": "Ctrl+Shift+M", "hub": "Ctrl+Shift+H",
+                   "to_emulator": "Ctrl+Shift+E"}
 
 MOD = {"ctrl": 0x0002, "alt": 0x0001, "shift": 0x0004, "win": 0x0008}
 MOD_NOREPEAT = 0x4000
@@ -131,3 +132,35 @@ class HotkeyManager:
             self.thread.join(1)
         self.thread = None
         self.thread_id = None
+
+
+def send_copy(advanced: bool = True) -> bool:
+    """Одно нажатие Ctrl+Alt+C (или Ctrl+C) — как в Awakened PoE Trade: игра сама кладёт
+    предмет под курсором в буфер. Сначала отпускаем модификаторы горячей клавиши,
+    которые пользователь ещё держит, иначе игра получит Ctrl+Shift+Alt+C."""
+    if sys.platform != "win32":
+        return False
+    import ctypes
+    from ctypes import wintypes
+
+    class KEYBDINPUT(ctypes.Structure):
+        _fields_ = [("wVk", wintypes.WORD), ("wScan", wintypes.WORD), ("dwFlags", wintypes.DWORD),
+                    ("time", wintypes.DWORD), ("dwExtraInfo", ctypes.c_size_t)]
+
+    class INPUT(ctypes.Structure):
+        class _U(ctypes.Union):
+            _fields_ = [("ki", KEYBDINPUT), ("pad", ctypes.c_byte * 32)]
+        _anonymous_ = ("u",)
+        _fields_ = [("type", wintypes.DWORD), ("u", _U)]
+
+    KEYUP = 0x0002
+    CTRL, ALT, SHIFT, LWIN, C = 0x11, 0x12, 0x10, 0x5B, 0x43
+    user32 = ctypes.windll.user32
+    seq = [(k, KEYUP) for k in (SHIFT, ALT, CTRL, LWIN) if user32.GetAsyncKeyState(k) & 0x8000]
+    keys = [CTRL, ALT, C] if advanced else [CTRL, C]
+    seq += [(k, 0) for k in keys] + [(k, KEYUP) for k in reversed(keys)]
+    arr = (INPUT * len(seq))()
+    for i, (vk, flags) in enumerate(seq):
+        arr[i].type = 1
+        arr[i].ki = KEYBDINPUT(vk, 0, flags, 0, 0)
+    return user32.SendInput(len(seq), arr, ctypes.sizeof(INPUT)) == len(seq)
