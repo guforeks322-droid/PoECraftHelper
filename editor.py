@@ -81,10 +81,14 @@ class RecipeEditor(tk.Toplevel):
         return frame, lb
 
     def _drag_start(self, e):
+        from poecraft import winmove
         self._dx, self._dy = e.x_root - self.winfo_x(), e.y_root - self.winfo_y()
+        if winmove.native_drag(self):
+            return "break"
 
     def _drag_move(self, e):
-        self.geometry(f"+{e.x_root - self._dx}+{e.y_root - self._dy}")
+        from poecraft import winmove
+        winmove.throttled_move(self, e.x_root - self._dx, e.y_root - self._dy)
 
     def _build(self):
         head = tk.Frame(self, bg=BG2)

@@ -234,10 +234,14 @@ class Overlay:
 
     # ------------------------------------------------------------ перетаскивание
     def _drag_start(self, e):
+        from poecraft import winmove
         self._dx, self._dy = e.x_root - self.root.winfo_x(), e.y_root - self.root.winfo_y()
+        if winmove.native_drag(self.root, lambda: self._drag_end(None)):
+            return "break"
 
     def _drag_move(self, e):
-        self.root.geometry(f"+{e.x_root - self._dx}+{e.y_root - self._dy}")
+        from poecraft import winmove
+        winmove.throttled_move(self.root, e.x_root - self._dx, e.y_root - self._dy)
 
     def _drag_end(self, e):
         self.settings["pos"] = (self.root.winfo_x(), self.root.winfo_y())

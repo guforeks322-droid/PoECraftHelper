@@ -2362,10 +2362,14 @@ class MainWindow(tk.Toplevel):
             pass
 
     def _drag_start(self, e):
+        from poecraft import winmove
         self._dx, self._dy = e.x_root - self.winfo_x(), e.y_root - self.winfo_y()
+        if winmove.native_drag(self, self._remember):
+            return "break"
 
     def _drag_move(self, e):
-        self.geometry(f"+{e.x_root - self._dx}+{e.y_root - self._dy}")
+        from poecraft import winmove
+        winmove.throttled_move(self, e.x_root - self._dx, e.y_root - self._dy)
 
     def _resize_start(self, e):
         self._rw, self._rh, self._rx, self._ry = self.winfo_width(), self.winfo_height(), e.x_root, e.y_root
@@ -2373,7 +2377,8 @@ class MainWindow(tk.Toplevel):
     def _resize_move(self, e):
         w = max(640, self._rw + e.x_root - self._rx)
         h = max(420, self._rh + e.y_root - self._ry)
-        self.geometry(f"{w}x{h}")
+        from poecraft import winmove
+        winmove.throttled_geometry(self, f"{w}x{h}")
 
     def _frameless(self):
         """Убираем системный заголовок и рамку, но окно остаётся «обычным» для Windows —
