@@ -39,6 +39,16 @@ CLASS_RU = {
 }
 
 
+def class_name(cls: str | None, default: str = "") -> str:
+    """Название класса предмета на языке интерфейса."""
+    from . import i18n
+    if not cls:
+        return i18n.t(default)
+    if i18n.lang() == "ru":
+        return CLASS_RU.get(cls, cls)
+    return cls.replace("_", " ").title()
+
+
 def recipe_from_dict(d: dict) -> dict:
     """Проверяет и нормализует крафт. Бросает ValueError, если что-то не так."""
     if not isinstance(d, dict):

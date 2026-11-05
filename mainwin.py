@@ -39,6 +39,9 @@ SKIP_CLASSES = {"HiddenItem", "FishingRod"}
 _POPDOWNS: list = []
 
 
+NONE = i18n.t("нет")
+
+
 def popdown_on_top(cb: ttk.Combobox):
     """Список комбобокса — отдельное окно; у окна «поверх всех» он прячется под ним. Поднимаем."""
     def raise_pd():
@@ -110,7 +113,7 @@ class MainWindow(tk.Toplevel):
         self.q: queue.Queue = queue.Queue()
 
         # Обычное окно (с рамкой) — в окнах без рамки Windows плохо отдаёт фокус клавиатуры.
-        self.title("PoE Craft Helper — мастерская")
+        self.title(i18n.t("PoE Craft Helper — мастерская"))
         self.configure(highlightthickness=1)
         self.minsize(640, 420)
         self.attributes("-topmost", True)
@@ -301,9 +304,9 @@ class MainWindow(tk.Toplevel):
         il.pack(side="left", padx=(4, 10))
         il.bind("<Return>", lambda e: self.load_pool())
         tk.Label(ctl, text="влияние", bg=BG1, fg=MUTED, font=(FONT, 9)).pack(side="left")
-        self.inf_var = tk.StringVar(value="нет")
+        self.inf_var = tk.StringVar(value=NONE)
         self.inf_box = ttk.Combobox(ctl, textvariable=self.inf_var, state="readonly", style="D.TCombobox",
-                                    values=["нет"], width=11, font=(FONT, 9))
+                                    values=[NONE], width=11, font=(FONT, 9))
         popdown_on_top(self.inf_box)
         self.inf_box.pack(side="left", padx=(4, 2))
         self.inf_box.bind("<<ComboboxSelected>>", lambda e: (self._paint_influence(), self.load_pool()))
@@ -367,9 +370,9 @@ class MainWindow(tk.Toplevel):
         # катализатор — только для колец, амулетов и поясов
         self.cat_frame = tk.Frame(top, bg=BG)
         tk.Label(self.cat_frame, text="катализатор 20%", bg=BG, fg=MUTED, font=(FONT, 9)).pack(side="left", padx=(10, 4))
-        self.cat_var = tk.StringVar(value="нет")
+        self.cat_var = tk.StringVar(value=NONE)
         cb = ttk.Combobox(self.cat_frame, textvariable=self.cat_var, state="readonly", style="D.TCombobox",
-                          values=["нет"] + list(sk.CATALYSTS), width=20, font=(FONT, 9))
+                          values=[NONE] + list(sk.CATALYSTS), width=20, font=(FONT, 9))
         popdown_on_top(cb)
         cb.pack(side="left")
         cb.bind("<<ComboboxSelected>>", lambda e: self.load_pool())
@@ -1166,7 +1169,7 @@ class MainWindow(tk.Toplevel):
     }
 
     def _cap(self, parent, text, side=None):
-        l = tk.Label(parent, text=text.upper(), bg=parent["bg"], fg=GOLD, font=(FONT, 9, "bold"), anchor="w")
+        l = tk.Label(parent, text=i18n.t(text).upper(), bg=parent["bg"], fg=GOLD, font=(FONT, 9, "bold"), anchor="w")
         l.pack(side=side) if side else l.pack(fill="x")
         return l
 
@@ -1502,7 +1505,7 @@ class MainWindow(tk.Toplevel):
         self.ilvl_var.set(str(item.ilvl or 84))
         tags = inf.influence_tags(self.data, base.item_class)
         one = [i for i in item.influences if i in tags]
-        self.inf_var.set(one[0] if len(one) == 1 else "нет")
+        self.inf_var.set(one[0] if len(one) == 1 else NONE)
         self._paint_influence()
         self.load_pool()
         if not self.pool:
@@ -1860,14 +1863,14 @@ class MainWindow(tk.Toplevel):
             popdown_on_top(cb)
             return cb
 
-        self._plan_act_labels = [l for _, l, _ in plans.ACTIONS]
-        self._plan_cond_labels = [l for l, _ in plans.CONDITIONS]
+        self._plan_act_labels = [i18n.t(l) for _, l, _ in plans.ACTIONS]
+        self._plan_cond_labels = [i18n.t(l) for l, _ in plans.CONDITIONS]
         self.pl_if = tk.StringVar(value="—")
         self.pl_act = tk.StringVar(value=self._plan_act_labels[0])
         self.pl_par = tk.StringVar()
         self.pl_until = tk.StringVar(value="—")
         self.pl_max = tk.StringVar(value="300")
-        self.pl_else = tk.StringVar(value="дальше")
+        self.pl_else = tk.StringVar(value=i18n.t("дальше"))
         row(0, "если")
         combo(0, self.pl_if, self._plan_cond_labels)
         row(1, "сделать")
@@ -1885,7 +1888,7 @@ class MainWindow(tk.Toplevel):
         row(5, "не больше раз")
         self._entry(ed, self.pl_max, 8).grid(row=5, column=1, sticky="w", padx=(0, 8), pady=3)
         row(6, "иначе")
-        self.pl_else_box = combo(6, self.pl_else, ["дальше", "стоп"])
+        self.pl_else_box = combo(6, self.pl_else, [i18n.t("дальше"), i18n.t("стоп")])
         tk.Label(ed, text="«если» — шаг выполняется только при условии; «повторять, пока» — кидать, пока условие "
                           "не выполнится. Не вышло → «иначе»: дальше, стоп (неудача) или вернуться к шагу.",
                  bg=BG1, fg=DIM, font=(FONT, 8), wraplength=400, justify="left", anchor="w").grid(
@@ -1926,7 +1929,7 @@ class MainWindow(tk.Toplevel):
             meta = {"prefix_lock": "Префиксы нельзя менять", "suffix_lock": "Суффиксы нельзя менять",
                     "no_attack": "Нельзя моды атаки", "no_caster": "Нельзя моды заклинаний",
                     "multi_craft": "До 3 крафтов"}
-            self._plan_bench_map = {v: ("meta", k) for k, v in meta.items()}
+            self._plan_bench_map = {i18n.t(v): ("meta", k) for k, v in meta.items()}
             em = self._plan_em(fresh=True)
             if em:
                 for o in em.bench_options():
@@ -1966,11 +1969,11 @@ class MainWindow(tk.Toplevel):
     def _plan_action(self):
         from poecraft import plans
         lab = self.pl_act.get()
-        return next((a for a, l, _ in plans.ACTIONS if l == lab), "chaos")
+        return next((a for a, l, _ in plans.ACTIONS if i18n.t(l) == lab), "chaos")
 
     def _plan_cond(self, label):
         from poecraft import plans
-        return dict(plans.CONDITIONS)[label] if label in dict(plans.CONDITIONS) else None
+        return {i18n.t(l): c for l, c in plans.CONDITIONS}.get(label)
 
     def _plan_step_from_editor(self):
         from poecraft import plans
@@ -2011,18 +2014,19 @@ class MainWindow(tk.Toplevel):
                 s["max"] = 300
         if c_if or c_until:
             e = self.pl_else.get()
-            s["else"] = "next" if e == "дальше" else "stop" if e == "стоп" else int(e.split()[-1]) - 1
+            s["else"] = "next" if e == i18n.t("дальше") else "stop" if e == i18n.t("стоп") else int(e.split()[-1]) - 1
         return s
 
     def _plan_refresh(self, sel=None):
         from poecraft import plans
         self.plan_lb.delete(0, "end")
         for i, s in enumerate(self.plan):
-            self.plan_lb.insert("end", f"{i + 1}. {plans.step_text(s)}")
+            self.plan_lb.insert("end", f"{i + 1}. {i18n.t(plans.step_text(s))}")
         if sel is not None and 0 <= sel < len(self.plan):
             self.plan_lb.selection_set(sel)
             self.plan_lb.see(sel)
-        self.pl_else_box.configure(values=["дальше", "стоп"] + [f"к шагу {i + 1}" for i in range(len(self.plan))])
+        self.pl_else_box.configure(values=[i18n.t("дальше"), i18n.t("стоп")] +
+                                   [f"{i18n.t('к шагу')} {i + 1}" for i in range(len(self.plan))])
 
     def _plan_sel(self):
         s = self.plan_lb.curselection()
@@ -2034,7 +2038,7 @@ class MainWindow(tk.Toplevel):
         if i is None:
             return
         s = self.plan[i]
-        self.pl_act.set(plans.ACTION_LABEL.get(s["do"], s["do"]))
+        self.pl_act.set(i18n.t(plans.ACTION_LABEL.get(s["do"], s["do"])))
         self._plan_param_values()
         kw = s.get("kw") or {}
         if kw.get("essence"):
@@ -2048,11 +2052,12 @@ class MainWindow(tk.Toplevel):
             self.pl_par.set(kw["bench_text"])
         elif kw.get("name") or kw.get("label"):
             self.pl_par.set(kw.get("name") or kw.get("label"))
-        self.pl_if.set(plans.cond_label(s.get("if")))
-        self.pl_until.set(plans.cond_label(s.get("until")))
+        self.pl_if.set(i18n.t(plans.cond_label(s.get("if"))))
+        self.pl_until.set(i18n.t(plans.cond_label(s.get("until"))))
         self.pl_max.set(str(s.get("max", 300)))
         e = s.get("else", "next")
-        self.pl_else.set("дальше" if e == "next" else "стоп" if e == "stop" else f"к шагу {int(e) + 1}")
+        self.pl_else.set(i18n.t("дальше") if e == "next" else i18n.t("стоп") if e == "stop"
+                         else f"{i18n.t('к шагу')} {int(e) + 1}")
 
     def plan_add(self):
         try:
@@ -2205,7 +2210,7 @@ class MainWindow(tk.Toplevel):
         tk.Label(box, text="СКОЛЬКО РАЗ СРАБАТЫВАЕТ ШАГ (в среднем на предмет)", bg=BG1, fg=GOLD,
                  font=(FONT, 8, "bold"), anchor="w").pack(fill="x", padx=8, pady=(6, 2))
         for i, (s, k) in enumerate(zip(steps, r["per_step"])):
-            tk.Label(box, text=f"{i + 1}. {plans.step_text(s)}", bg=BG1, fg=FG, font=(FONT, 9), anchor="w",
+            tk.Label(box, text=f"{i + 1}. {i18n.t(plans.step_text(s))}", bg=BG1, fg=FG, font=(FONT, 9), anchor="w",
                      wraplength=520, justify="left").pack(fill="x", padx=8)
             tk.Label(box, text=f"    × {k:.1f}", bg=BG1, fg=MUTED, font=(FONT, 8), anchor="w").pack(fill="x", padx=8)
         tk.Frame(box, bg=BG1, height=6).pack()
@@ -2470,9 +2475,9 @@ class MainWindow(tk.Toplevel):
         if not self.pool or self.pool.base.name != base.name:
             self.selected.clear()
         self.inf_map = inf.influence_tags(self.data, base.item_class)
-        self.inf_box["values"] = ["нет"] + list(self.inf_map)
+        self.inf_box["values"] = [NONE] + list(self.inf_map)
         if self.inf_var.get() not in self.inf_box["values"]:
-            self.inf_var.set("нет")
+            self.inf_var.set(NONE)
         infl = self.inf_var.get()
         base_extra = set()
         if base.domain == "affliction_jewel":
@@ -2490,7 +2495,7 @@ class MainWindow(tk.Toplevel):
             self.cat_frame.pack(side="left")
         else:
             self.cat_frame.pack_forget()
-            self.cat_var.set("нет")
+            self.cat_var.set(NONE)
         extra = set(base_extra)
         if infl in self.inf_map:
             extra.add(self.inf_map[infl])

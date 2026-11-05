@@ -266,3 +266,17 @@ def test_plans_run():
     r = plans.simulate(data, em, targets, steps, 20, Prices())
     assert r["items"] == 20 and not r["errors"], r
     assert "пока не" in plans.step_text(steps[1])
+
+
+def test_i18n_phrases():
+    import pytest
+    pytest.importorskip("tkinter")
+    from poecraft import i18n
+    try:
+        i18n.set_lang("en")
+        assert i18n.t("Chaos работает только на редком предмете.") == "Chaos works only on a rare item."
+        assert i18n.t("Готово: 300 предметов") == "Done: 300 items"
+        assert i18n.t("PoE Craft Helper") == "PoE Craft Helper"
+    finally:
+        i18n.set_lang("ru")
+    assert i18n.t("Готово") == "Готово"

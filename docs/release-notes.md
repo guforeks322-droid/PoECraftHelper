@@ -2,6 +2,12 @@
 
 Помощник крафта для Path of Exile 1: оверлей поверх игры со следующим шагом крафта и мастерская — пул модов, калькулятор цены по poe.ninja, эмулятор крафта.
 
+### Новое в 0.22
+- Вкладка **«Рецепты»**: пошаговый план крафта с развилками и прогоном на N предметов — реальная цена всего пути.
+- Кнопки **трейда**: купить базу, готовый предмет, «такой же на трейде» из эмулятора.
+- **Установщик** и своя иконка программы.
+- **Английский интерфейс** (Settings → Language) и README.en.md.
+
 ### Как установить
 **Проще всего:** скачай `PoECraftHelper-Setup-….exe` ниже (Assets) и запусти — установится без прав администратора, с ярлыком на рабочем столе.
 
@@ -14,3 +20,7 @@
 Горячие клавиши: `Ctrl+Alt+C` в игре — совет по предмету, `Ctrl+Shift+E` — предмет в эмулятор, `Ctrl+Shift+H` — стартовое окно.
 
 Подробно — `Как пользоваться.txt` в архиве. Программа читает только буфер обмена и не трогает файлы и память игры.
+
+
+---
+**English:** Path of Exile 1 crafting helper — overlay with next-step advice and a workshop with mod pool, cost calculator, emulator and branching recipes. Download the Setup exe or the zip below; switch the interface to English in Settings → Language. See README.en.md.

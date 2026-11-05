@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import re
 import tkinter as tk
 from tkinter import ttk
 
@@ -99,7 +100,31 @@ EN = {
     "Язык интерфейса сменится после перезапуска программы.": "Interface language changes after restarting the app.",
 }
 
+from .i18n_en import EN2
+
+for _k, _v in EN2.items():
+    EN.setdefault(_k, _v)
+
 _lang = "ru"
+_rx = None
+_CYR = re.compile("[а-яА-ЯёЁ]")
+
+
+def _phrases():
+    """Регулярка из всех русских фраз словаря — длинные первыми, по границам слов."""
+    global _rx
+    if _rx is None:
+        keys = sorted({k.strip() for k in EN if k.strip() and _CYR.search(k)}, key=len, reverse=True)
+        parts = []
+        for k in keys:
+            e = re.escape(k)
+            if _CYR.match(k[0]):
+                e = "(?<![а-яА-ЯёЁ])" + e
+            if _CYR.match(k[-1]):
+                e += "(?![а-яА-ЯёЁ])"
+            parts.append(e)
+        _rx = (re.compile("|".join(parts)), {k.strip(): v.strip() for k, v in EN.items() if k.strip()})
+    return _rx
 
 
 def set_lang(lang: str):
@@ -112,7 +137,32 @@ def lang() -> str:
 
 
 def t(s: str) -> str:
-    return EN.get(s, s) if _lang == "en" else s
+    """Перевод строки: точное совпадение, иначе — пофразно (для сообщений, собранных из кусков)."""
+    if _lang != "en" or not isinstance(s, str) or not _CYR.search(s):
+        return s
+    if s in EN:
+        return EN[s]
+    st = s.strip()
+    if st in EN:
+        return s.replace(st, EN[st].strip())
+    rx, table = _phrases()
+    return rx.sub(lambda m: table.get(m.group(0), m.group(0)), s)
+
+
+_orig_options = tk.Misc._options
+
+
+def _options(self, cnf, kw=None):
+    """Все тексты виджетов (и созданных позже, и изменённых через configure) идут через t()."""
+    if _lang == "en":
+        if isinstance(cnf, dict) and isinstance(cnf.get("text"), str):
+            cnf = dict(cnf, text=t(cnf["text"]))
+        if isinstance(kw, dict) and isinstance(kw.get("text"), str):
+            kw = dict(kw, text=t(kw["text"]))
+    return _orig_options(self, cnf, kw)
+
+
+tk.Misc._options = _options
 
 
 def translate_tree(root: tk.Misc):

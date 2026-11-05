@@ -71,7 +71,7 @@ class SettingsWindow(tk.Toplevel):
         self.app = app
         self.draft = copy.deepcopy(app.settings)
         self.draft.setdefault("hotkeys", {})
-        self.title("Настройки — PoE Craft Helper")
+        self.title(i18n.t("Настройки — PoE Craft Helper"))
         self.configure(bg=SIDE, highlightthickness=1, highlightbackground=LINE)
         self.attributes("-topmost", True)
         self.geometry(app.settings.get("settings_geo", "820x600+300+140"))
@@ -125,7 +125,7 @@ class SettingsWindow(tk.Toplevel):
                 tk.Frame(side, bg=LINE, height=1).pack(fill="x", padx=12, pady=6)
                 continue
             key, label = sec
-            it = tk.Label(side, text=label.upper(), bg=SIDE, fg=MUTED, font=(FONT, 10), anchor="w",
+            it = tk.Label(side, text=i18n.t(label).upper(), bg=SIDE, fg=MUTED, font=(FONT, 10), anchor="w",
                           padx=16, pady=7, cursor="hand2")
             it.pack(fill="x", padx=6, pady=1)
             it.bind("<Button-1>", lambda e, k=key: self.show(k))
@@ -180,7 +180,7 @@ class SettingsWindow(tk.Toplevel):
         b.pack(fill="x", pady=(0, 12))
 
     def _h(self, parent, text):
-        tk.Label(parent, text=text.upper(), bg=BG, fg=FG, font=(FONT, 10, "bold"), anchor="w").pack(fill="x", pady=(10, 4))
+        tk.Label(parent, text=i18n.t(text).upper(), bg=BG, fg=FG, font=(FONT, 10, "bold"), anchor="w").pack(fill="x", pady=(10, 4))
 
     def _row(self, parent, label, sub=False):
         r = tk.Frame(parent, bg=BG)
@@ -206,15 +206,16 @@ class SettingsWindow(tk.Toplevel):
         return b
 
     def _combo(self, parent, values, current, on_change, width=24):
-        v = tk.StringVar(value=current)
-        cb = ttk.Combobox(parent, textvariable=v, state="readonly", values=values, style="S.TCombobox",
+        back = {i18n.t(x): x for x in values}     # показываем перевод, наружу отдаём исходное значение
+        v = tk.StringVar(value=i18n.t(current))
+        cb = ttk.Combobox(parent, textvariable=v, state="readonly", values=list(back), style="S.TCombobox",
                           width=width, font=(FONT, 10))
         try:
             from mainwin import popdown_on_top
             popdown_on_top(cb)
         except Exception:
             pass
-        cb.bind("<<ComboboxSelected>>", lambda e: on_change(v.get()))
+        cb.bind("<<ComboboxSelected>>", lambda e: on_change(back.get(v.get(), v.get())))
         return cb
 
     def _note(self, parent, text="", fg=MUTED):
