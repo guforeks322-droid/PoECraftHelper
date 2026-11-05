@@ -1052,7 +1052,7 @@ class MainWindow(tk.Toplevel):
         for i, name in enumerate(self.fos_list):
             t = tk.Label(self.emu_fos_grid, text=name.replace(" Fossil", "")[:5], bg=TILE, fg=MUTED, font=(FONT, 7),
                          cursor="hand2", highlightthickness=2, highlightbackground=TILE, width=4, height=2)
-            t.grid(row=i // 9, column=i % 9, padx=1, pady=1)
+            t.grid(row=i // 8, column=i % 8, padx=1, pady=1)
             fo = self.fos_list[name]
             tip = f"{name}: {fo.describe} · {self._price_txt(name)}"
             t.bind("<Button-1>", lambda e, n=name: self._emu_fos_toggle(n))
@@ -1404,7 +1404,7 @@ class MainWindow(tk.Toplevel):
         for i, (kind, (tier, e)) in enumerate(sorted(best.items())):
             t = tk.Label(self.emu_ess_grid, bg=TILE, cursor="hand2", highlightthickness=1, highlightbackground=LINE,
                          text=kind[:4], fg=MUTED, font=(FONT, 7), width=4, height=2)
-            t.grid(row=i // 9, column=i % 9, padx=1, pady=1)
+            t.grid(row=i // 8, column=i % 8, padx=1, pady=1)
             tip = f"{e.name}: {short(e.mod.text)} · {self._price_txt(e.name)}"
             t.bind("<Button-1>", lambda ev, x=e: self.emu_pick("essence", essence=x))
             t.bind("<Enter>", lambda ev, w=t, tp=tip: (w.configure(bg=TILE_HI, highlightbackground="#6b5124"),
