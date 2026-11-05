@@ -2438,7 +2438,8 @@ class MainWindow(tk.Toplevel):
     def _keep_on_top(self):
         try:
             if self.state() == "normal" and not popdown_open():
-                self.attributes("-topmost", True)
+                from poecraft import winmove
+                winmove.ensure_topmost(self)
         except tk.TclError:
             return
         self.after(2000, self._keep_on_top)
