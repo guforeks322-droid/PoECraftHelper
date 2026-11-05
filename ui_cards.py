@@ -11,7 +11,9 @@ BG, BG1, BG2, LINE = "#0f0d0a", "#16130f", "#1f1a14", "#3a3127"
 CARD, CARD_BEST = "#1a1611", "#1c2216"
 FG, MUTED, DIM, GOLD, GOOD, WARN = "#d9d0c1", "#8a7f70", "#5a5248", "#e3b55b", "#7ec27a", "#e07a5f"
 GOLD_LINE = "#6b5124"
-FONT = "Segoe UI"
+from poecraft import fonts as _fonts
+FONT = _fonts.UI
+TFONT = _fonts.TITLE   # заголовки
 
 
 class ScrollList(tk.Frame):
@@ -78,7 +80,7 @@ def result_card(parent, *, title, icon_names=(), best=False, desc="", cost="", c
             l = tk.Label(top, image=img, bg=bgc)
             l._img = img
             l.pack(side="left", padx=(0, 2))
-    tk.Label(top, text=title, bg=bgc, fg=GOLD, font=(FONT, 11, "bold"), anchor="w").pack(side="left", padx=(4, 0))
+    tk.Label(top, text=title, bg=bgc, fg=GOLD, font=(TFONT, 13), anchor="w").pack(side="left", padx=(4, 0))
     if best:
         tk.Label(top, text="ДЕШЕВЛЕ ВСЕГО", bg="#2a4a2a", fg=GOOD, font=(FONT, 7, "bold"), padx=6).pack(side="left",
                                                                                                     padx=8)

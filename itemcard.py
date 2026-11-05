@@ -16,7 +16,9 @@ from poecraft import influence as inf
 BG = "#0c0a08"
 PANEL = "#100e0b"
 FG, MUTED, DIM, GOLD, GOOD, WARN = "#d9d0c1", "#8a7f70", "#5a5248", "#e3b55b", "#7ec27a", "#e07a5f"
-FONT = "Segoe UI"
+from poecraft import fonts as _fonts
+FONT = _fonts.UI
+TFONT = _fonts.TITLE   # заголовки
 MOD_FG = "#8f9cff"          # явные моды — синие, как в игре
 IMPLICIT_FG = "#8f9cff"
 CRAFT_FG = "#b8c4ff"
@@ -136,7 +138,7 @@ class ItemCard(tk.Frame):
         head = tk.Frame(self.body, bg=head_bg)
         head.pack(fill="x")
         title = {"Normal": base.name, "Magic": "Магический " + base.name, "Rare": "Редкий предмет"}[em.rarity]
-        tk.Label(head, text=title, bg=head_bg, fg=name_fg, font=(FONT, 13, "bold")).pack(pady=(6, 0))
+        tk.Label(head, text=title, bg=head_bg, fg=name_fg, font=(TFONT, 15)).pack(pady=(6, 0))
         if em.rarity == "Rare":
             tk.Label(head, text=base.name, bg=head_bg, fg=name_fg, font=(FONT, 11)).pack()
         mp, ms = em.limits()

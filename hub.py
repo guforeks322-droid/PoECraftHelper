@@ -22,7 +22,9 @@ TILE_HI = "#241e16"
 LINE = "#3a3127"
 GOLD_LINE = "#6b5a22"
 FG, MUTED, DIM, GOLD, GOOD, WARN = "#d9d0c1", "#8a7f70", "#5a5248", "#e3b55b", "#7ec27a", "#e07a5f"
-FONT = "Segoe UI"
+from poecraft import fonts as _fonts
+FONT = _fonts.UI
+TFONT = _fonts.TITLE   # заголовки
 
 TILES = [
     ("workshop", "⚒", "Мастерская", "пул модов, калькулятор, эмулятор"),
@@ -77,7 +79,7 @@ class HubWindow(tk.Toplevel):
     def _build(self):
         head = tk.Frame(self, bg=TITLE)
         head.pack(fill="x")
-        title = tk.Label(head, text="  POE CRAFT HELPER", bg=TITLE, fg=GOLD, font=(FONT, 10, "bold"),
+        title = tk.Label(head, text="  POE CRAFT HELPER", bg=TITLE, fg=GOLD, font=(TFONT, 12),
                          compound="left")
         try:
             from PIL import Image, ImageTk
@@ -248,7 +250,7 @@ class HubWindow(tk.Toplevel):
     def _tile(self, parent, key, icon, name, sub):
         f = tk.Frame(parent, bg=TILE, highlightthickness=1, highlightbackground=LINE, cursor="hand2")
         a = tk.Label(f, text=icon, bg=TILE, fg=GOLD, font=(FONT, 20))
-        b = tk.Label(f, text=name, bg=TILE, fg=FG, font=(FONT, 11, "bold"))
+        b = tk.Label(f, text=name, bg=TILE, fg=FG, font=(TFONT, 13))
         c = tk.Label(f, text=sub, bg=TILE, fg=MUTED, font=(FONT, 8), wraplength=140, justify="center")
         a.pack(pady=(12, 0))
         b.pack()
@@ -292,7 +294,7 @@ class HubWindow(tk.Toplevel):
             self._small_btn(row, "+ Новый", self.app.new_recipe).pack(side="left", padx=6)
             return
         raw = g.raw
-        tk.Label(inner, text=g.name, bg=TILE, fg=GOLD, font=(FONT, 12, "bold"), anchor="w",
+        tk.Label(inner, text=g.name, bg=TILE, fg=GOLD, font=(TFONT, 14), anchor="w",
                  justify="left", wraplength=380).pack(fill="x")
         cls = recipes.class_name(raw.get("base_class"), "любой класс")
         meta = [cls]
@@ -388,7 +390,7 @@ class HubWindow(tk.Toplevel):
         back.bind("<Button-1>", lambda e: self.show_home())
         back.bind("<Enter>", lambda e: back.configure(fg=GOLD))
         back.bind("<Leave>", lambda e: back.configure(fg=MUTED))
-        tk.Label(top, text="МОИ КРАФТЫ", bg=BG, fg=GOLD, font=(FONT, 11, "bold")).pack(side="left", padx=16)
+        tk.Label(top, text="МОИ КРАФТЫ", bg=BG, fg=GOLD, font=(TFONT, 13)).pack(side="left", padx=16)
         self.count_lbl = tk.Label(top, text="", bg=BG, fg=DIM, font=(FONT, 9))
         self.count_lbl.pack(side="left")
 

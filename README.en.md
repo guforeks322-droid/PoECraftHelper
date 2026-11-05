@@ -128,6 +128,7 @@ Pushing a `v*` tag creates a release.
 - [poe.ninja](https://poe.ninja) for prices and icons
 - [Craft of Exile](https://www.craftofexile.com) and [Awakened PoE Trade](https://github.com/SnosMe/awakened-poe-trade) for inspiration
 - the Siveran socket calculator for the color formula
+- [Inter](https://rsms.me/inter/) and [Forum](https://fonts.google.com/specimen/Forum) fonts (SIL Open Font License)
 
 ---
 
