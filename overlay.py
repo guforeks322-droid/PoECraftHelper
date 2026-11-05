@@ -33,7 +33,9 @@ GOLD = "#e3b55b"
 GOOD = "#7ec27a"
 BAD = "#8a7f70"
 WARN = "#e07a5f"
-FONT = "Segoe UI"
+from poecraft import fonts as _fonts
+FONT = _fonts.UI
+TFONT = _fonts.TITLE   # заголовки
 SETTINGS = APP_DIR / "settings.json"
 GOALS_DIR = APP_DIR / "goals"
 WIDTH = 390
@@ -138,7 +140,7 @@ class Overlay:
         hl = tk.Frame(self.head, bg=BG2)
         hl.pack(side="left", fill="x", expand=True, padx=10, pady=(5, 5))
         self._head_text = hl
-        self.title_lbl = tk.Label(hl, text="⚒ PoE Craft Helper", bg=BG2, fg=GOLD, font=(FONT, 11, "bold"),
+        self.title_lbl = tk.Label(hl, text="⚒ PoE Craft Helper", bg=BG2, fg=GOLD, font=(TFONT, 13),
                                   anchor="w")
         self.title_lbl.pack(fill="x")
         self.sub_lbl = tk.Label(hl, text="скопируй предмет в игре", bg=BG2, fg=MUTED, font=(FONT, 8), anchor="w")

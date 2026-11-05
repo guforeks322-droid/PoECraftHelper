@@ -24,7 +24,9 @@ FIELD = "#1f1a14"     # поля
 BANNER = "#2a231a"    # подсказка сверху
 LINE = "#3a3127"
 FG, MUTED, GOLD, GOOD, WARN = "#d9d0c1", "#8a7f70", "#e3b55b", "#7ec27a", "#e07a5f"
-FONT = "Segoe UI"
+from poecraft import fonts as _fonts
+FONT = _fonts.UI
+TFONT = _fonts.TITLE   # заголовки
 
 SECTIONS = [
     ("hotkeys", "Горячие клавиши"),
@@ -184,7 +186,7 @@ class SettingsWindow(tk.Toplevel):
         b.pack(fill="x", pady=(0, 12))
 
     def _h(self, parent, text):
-        tk.Label(parent, text=i18n.t(text).upper(), bg=BG, fg=FG, font=(FONT, 10, "bold"), anchor="w").pack(fill="x", pady=(10, 4))
+        tk.Label(parent, text=i18n.t(text).upper(), bg=BG, fg=FG, font=(TFONT, 12), anchor="w").pack(fill="x", pady=(10, 4))
 
     def _row(self, parent, label, sub=False):
         r = tk.Frame(parent, bg=BG)
@@ -471,7 +473,7 @@ class SettingsWindow(tk.Toplevel):
 
     # ------------------------------------------------------------ о программе
     def _page_about(self, p):
-        tk.Label(p, text="⚒ PoE Craft Helper", bg=BG, fg=GOLD, font=(FONT, 16, "bold"), anchor="w").pack(fill="x", pady=(4, 0))
+        tk.Label(p, text="⚒ PoE Craft Helper", bg=BG, fg=GOLD, font=(TFONT, 18), anchor="w").pack(fill="x", pady=(4, 0))
         tk.Label(p, text=f"версия {APP_VERSION}", bg=BG, fg=MUTED, font=(FONT, 10), anchor="w").pack(fill="x")
         self._note(p, "Помощник крафта для Path of Exile 1: подсказки по предмету из буфера обмена, пул модов, "
                       "калькулятор, эссенции и фоссилы, эмулятор, влияния, Eldritch, Harvest, кластеры, сокеты.", FG)

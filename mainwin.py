@@ -31,7 +31,9 @@ TILE, TILE_HI = "#1a1611", "#2a2116"
 DIM = "#5a5248"
 GOLD_LINE = "#6b5124"
 FG, MUTED, GOLD, GOOD, WARN, BLUE = "#d9d0c1", "#8a7f70", "#e3b55b", "#7ec27a", "#e07a5f", "#8fb3e0"
-FONT = "Segoe UI"
+from poecraft import fonts as _fonts
+FONT = _fonts.UI
+TFONT = _fonts.TITLE   # заголовки
 CRAFT_DOMAINS = {"item", "flask", "misc", "abyss_jewel", "affliction_jewel"}
 SKIP_CLASSES = {"HiddenItem", "FishingRod"}
 
@@ -269,7 +271,7 @@ class MainWindow(tk.Toplevel):
     def _build(self):
         head = tk.Frame(self, bg=BG2)
         head.pack(fill="x")
-        title = tk.Label(head, text="⚒ PoE Craft Helper — мастерская", bg=BG2, fg=GOLD, font=(FONT, 10, "bold"))
+        title = tk.Label(head, text="⚒ PoE Craft Helper — мастерская", bg=BG2, fg=GOLD, font=(TFONT, 12))
         title.pack(side="left", padx=8, pady=4)
         self.bind("<Configure>", self._on_configure)
         for w in (head, title):
@@ -1169,7 +1171,7 @@ class MainWindow(tk.Toplevel):
     }
 
     def _cap(self, parent, text, side=None):
-        l = tk.Label(parent, text=i18n.t(text).upper(), bg=parent["bg"], fg=GOLD, font=(FONT, 9, "bold"), anchor="w")
+        l = tk.Label(parent, text=i18n.t(text).upper(), bg=parent["bg"], fg=GOLD, font=(TFONT, 11), anchor="w")
         l.pack(side=side) if side else l.pack(fill="x")
         return l
 

@@ -11,7 +11,9 @@ from poecraft.pool import ModPool
 from poecraft.recipes import CLASS_RU, CRAFT_CLASSES, recipe_from_dict
 
 BG, BG2, FG, MUTED, GOLD, GOOD, WARN = "#14110d", "#1f1a14", "#d9d0c1", "#8a7f70", "#e3b55b", "#7ec27a", "#e07a5f"
-FONT = "Segoe UI"
+from poecraft import fonts as _fonts
+FONT = _fonts.UI
+TFONT = _fonts.TITLE   # заголовки
 NUM_RE = re.compile(r"\(?[-+]?\d+(?:\.\d+)?(?:-\d+(?:\.\d+)?)?\)?")
 
 
@@ -93,7 +95,7 @@ class RecipeEditor(tk.Toplevel):
     def _build(self):
         head = tk.Frame(self, bg=BG2)
         head.pack(fill="x")
-        t = tk.Label(head, text="РЕДАКТОР КРАФТА", bg=BG2, fg=GOLD, font=(FONT, 10, "bold"))
+        t = tk.Label(head, text="РЕДАКТОР КРАФТА", bg=BG2, fg=GOLD, font=(TFONT, 12))
         t.pack(side="left", padx=10, pady=6)
         for w in (head, t):
             w.bind("<ButtonPress-1>", self._drag_start)

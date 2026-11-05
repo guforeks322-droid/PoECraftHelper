@@ -136,6 +136,7 @@ git tag v0.22.0 && git push --tags
 - [poe.ninja](https://poe.ninja) — цены и иконки
 - [Craft of Exile](https://www.craftofexile.com) и [Awakened PoE Trade](https://github.com/SnosMe/awakened-poe-trade) — вдохновение
 - Калькулятор сокетов Siveran — формула цветов
+- Шрифты [Inter](https://rsms.me/inter/) и [Forum](https://fonts.google.com/specimen/Forum) — SIL Open Font License
 
 ---
 
