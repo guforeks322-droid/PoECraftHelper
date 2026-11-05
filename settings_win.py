@@ -41,6 +41,7 @@ SECTIONS = [
 HOTKEY_ACTIONS = [
     ("overlay", "Показать / спрятать оверлей"),
     ("workshop", "Показать / спрятать мастерскую"),
+    ("hub", "Показать / спрятать стартовое окно (хаб)"),
     ("settings", "Открыть настройки"),
 ]
 
@@ -310,7 +311,20 @@ class SettingsWindow(tk.Toplevel):
         self._alpha(p, "alpha", 0.92, lambda a: self.app.root.attributes("-alpha", a))
         self._h(p, "Поведение")
         self._check(p, "Показывать оверлей, когда скопирован предмет (даже если он спрятан)", "auto_show", True)
+        self._check(p, "При запуске открывать стартовое окно (хаб), оверлей — только по предмету", "hub_on_start", True)
         self._check(p, "Держать поверх всех окон", "keep_on_top", True)
+        self._h(p, "Где показывать карточку предмета")
+        pos = {"fixed": "На своём месте (куда перетащил)", "cursor": "Рядом с курсором, как прайс-чек в APT"}
+        r = self._row(p, "Положение")
+        self._combo(r, list(pos.values()), pos.get(self.draft.get("overlay_position", "fixed")),
+                    lambda v: self.draft.__setitem__("overlay_position", {b: a for a, b in pos.items()}[v]),
+                    width=34).pack(side="right")
+        hide = {0: "Не скрывать", 5: "Через 5 секунд", 10: "Через 10 секунд", 20: "Через 20 секунд",
+                40: "Через 40 секунд"}
+        r = self._row(p, "Автоскрытие (если мышь не над карточкой)")
+        self._combo(r, list(hide.values()), hide.get(int(self.draft.get("overlay_autohide", 0) or 0), "Не скрывать"),
+                    lambda v: self.draft.__setitem__("overlay_autohide", {b: a for a, b in hide.items()}[v]),
+                    width=18).pack(side="right")
         r = tk.Frame(p, bg=BG)
         r.pack(fill="x", pady=(10, 0))
         self._button(r, "Вернуть оверлей в угол экрана", self._reset_overlay_pos).pack(side="left")

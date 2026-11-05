@@ -10,6 +10,19 @@ import tkinter as tk
 from tkinter import ttk
 
 EN = {
+    # хаб
+    "Мастерская": "Workshop", "Мои крафты": "My crafts", "Импорт кода": "Import code",
+    "пул модов, калькулятор, эмулятор": "mod pool, calculator, emulator",
+    "библиотека целей и поиск": "goal library and search", "вставить код PCH1 из буфера": "paste a PCH1 code",
+    "хоткеи, язык, обновления": "hotkeys, language, updates", "АКТИВНАЯ ЦЕЛЬ": "ACTIVE GOAL",
+    "НЕДАВНИЕ ПРЕДМЕТЫ": "RECENT ITEMS", "Сменить": "Change", "Изменить": "Edit", "Поделиться": "Share",
+    "+ Новый": "+ New", "Цель не выбрана": "No goal selected", "←  Главная": "←  Home",
+    "МОИ КРАФТЫ": "MY CRAFTS", "★ Сделать активной": "★ Make active", "Импорт": "Import",
+    "Удалить": "Delete", "Папка": "Folder", "Название": "Name", "Класс": "Class", "Автор": "Author",
+    "Все классы": "All classes",
+    "Пока пусто. Скопируй предмет в игре — он появится здесь.":
+        "Nothing yet. Copy an item in game and it shows up here.",
+    "Выбери крафт в библиотеке или создай новый.": "Pick a craft in the library or create a new one.",
     # оверлей
     "Цель:": "Goal:", "+ новый": "+ new", "изменить": "edit", "поделиться": "share", "импорт": "import",
     "папка": "folder", "мастерская": "workshop", "⚙": "⚙",

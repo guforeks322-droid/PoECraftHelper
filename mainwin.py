@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import queue
+import sys
 import threading
 import tkinter as tk
 from tkinter import ttk
@@ -18,6 +19,7 @@ from poecraft.emulator import CraftError, Emulator
 from poecraft import influence as inf
 from poecraft import sockets as sk
 from poecraft import i18n
+from poecraft import icons
 from poecraft import hotkeys as hkmod
 from poecraft.updater import APP_VERSION
 from poecraft.data import APP_DIR, GameData
@@ -25,6 +27,7 @@ from poecraft.pool import ModPool
 from poecraft.prices import Prices
 
 BG, BG1, BG2, LINE = "#0f0d0a", "#16130f", "#1f1a14", "#3a3127"
+TILE, TILE_HI = "#1a1611", "#2a2116"
 FG, MUTED, GOLD, GOOD, WARN, BLUE = "#d9d0c1", "#8a7f70", "#e3b55b", "#7ec27a", "#e07a5f", "#8fb3e0"
 FONT = "Segoe UI"
 CRAFT_DOMAINS = {"item", "flask", "misc", "abyss_jewel", "affliction_jewel"}
@@ -51,6 +54,15 @@ def popdown_on_top(cb: ttk.Combobox):
     cb.configure(postcommand=post)
     _POPDOWNS.append(cb)
     return cb
+
+
+def weight_bar(frac: float, cells: int = 8) -> str:
+    """Полоска веса мода из символов блоков: █████▍ — как столбики на Craft of Exile."""
+    parts = " ▏▎▍▌▋▊▉█"
+    x = max(0.0, min(1.0, frac)) * cells
+    full = int(x)
+    rest = parts[int((x - full) * 8)] if full < cells else ""
+    return ("█" * full + rest).rstrip() or "▏"
 
 
 def popdown_open() -> bool:
@@ -169,6 +181,59 @@ class MainWindow(tk.Toplevel):
         b.bind("<Button-1>", lambda e: cmd())
         return b
 
+    def _tile(self, parent, icon, label, cmd, size=32, compact=False, tip=""):
+        """Кнопка-плитка как на Craft of Exile: иконка валюты и подпись. Без иконки — только текст."""
+        t = tk.Label(parent, text=label, bg=TILE, fg=FG, cursor="hand2", font=(FONT, 8),
+                     compound="left" if compact else "top", padx=4, pady=3 if compact else 4,
+                     highlightthickness=1, highlightbackground=LINE)
+        t.bind("<Button-1>", lambda e: cmd())
+        t.bind("<Enter>", lambda e: (t.configure(bg=TILE_HI, fg=GOLD, highlightbackground="#6b5124"),
+                                     tip and self.emu_status.configure(text=tip, fg=MUTED)))
+        t.bind("<Leave>", lambda e: t.configure(bg=TILE, fg=FG, highlightbackground=LINE))
+        self._icon(t, icon, size)
+        return t
+
+    def _icon(self, widget, name, size=24):
+        """Ставит иконку на виджет сейчас или когда она скачается."""
+        if not hasattr(self, "_iconed"):
+            self._iconed = []
+            st = icons.store()
+            if st:
+                st.subscribe(self._refresh_icons)
+        self._iconed.append((widget, name, size))
+        self._apply_icon(widget, name, size)
+
+    def _apply_icon(self, widget, name, size):
+        st = icons.store()
+        img = st.get(name, size) if st else None
+        if img is not None:
+            try:
+                widget.configure(image=img)
+                widget._img = img
+            except tk.TclError:
+                pass
+
+    def _refresh_icons(self):
+        self._iconed = [(w, n, s) for w, n, s in getattr(self, "_iconed", []) if w.winfo_exists()]
+        for w, n, s in self._iconed:
+            self._apply_icon(w, n, s)
+        try:
+            self._fill_fossils()
+            self._fill_essences()
+            self._paint_influence()
+        except Exception:
+            pass
+
+    def _paint_influence(self):
+        name = self.inf_var.get()
+        img = self._row_icon(name, 22) if name in icons.INFLUENCE_ICON else None
+        self.inf_icon.configure(image=img or "")
+        self.inf_icon._img = img
+
+    def _row_icon(self, name, size=20):
+        st = icons.store()
+        return st.get(name, size) if st else None
+
     def _entry(self, parent, var, width):
         return tk.Entry(parent, textvariable=var, width=width, bg=BG2, fg=FG, insertbackground=FG,
                         relief="flat", highlightthickness=1, highlightbackground=LINE,
@@ -213,8 +278,10 @@ class MainWindow(tk.Toplevel):
         self.inf_box = ttk.Combobox(ctl, textvariable=self.inf_var, state="readonly", style="D.TCombobox",
                                     values=["нет"], width=11, font=(FONT, 9))
         popdown_on_top(self.inf_box)
-        self.inf_box.pack(side="left", padx=(4, 10))
-        self.inf_box.bind("<<ComboboxSelected>>", lambda e: self.load_pool())
+        self.inf_box.pack(side="left", padx=(4, 2))
+        self.inf_box.bind("<<ComboboxSelected>>", lambda e: (self._paint_influence(), self.load_pool()))
+        self.inf_icon = tk.Label(ctl, bg=BG)
+        self.inf_icon.pack(side="left", padx=(0, 10))
         self._act(ctl, "Показать моды", self.load_pool).pack(side="left")
         self.info_lbl = tk.Label(ctl, text="", bg=BG, fg=MUTED, font=(FONT, 9))
         self.info_lbl.pack(side="left", padx=10)
@@ -244,7 +311,7 @@ class MainWindow(tk.Toplevel):
         foot.pack(fill="x")
         self.status = tk.Label(foot, text="Выбери базу предмета.", bg=BG, fg=MUTED, font=(FONT, 8), anchor="w")
         self.status.pack(side="left", fill="x", expand=True, padx=10, pady=3)
-        grip = tk.Label(foot, text="◢", bg=BG, fg=MUTED, cursor="size_nw_se", font=(FONT, 10))
+        grip = tk.Label(foot, text="◢", bg=BG, fg=MUTED, cursor="size_nw_se" if sys.platform == "win32" else "bottom_right_corner", font=(FONT, 10))
         grip.pack(side="right", padx=2)
         grip.bind("<ButtonPress-1>", self._resize_start)
         grip.bind("<B1-Motion>", self._resize_move)
@@ -291,13 +358,15 @@ class MainWindow(tk.Toplevel):
             lbl.grid(row=0, column=i, sticky="we", padx=4)
             fr = tk.Frame(cols, bg=BG)
             fr.grid(row=1, column=i, sticky="nsew", padx=4, pady=(0, 4))
-            tv = ttk.Treeview(fr, style="D.Treeview", columns=("chk", "all", "kind", "tier"),
+            tv = ttk.Treeview(fr, style="D.Treeview", columns=("chk", "all", "kind", "bar", "tier"),
                               show="tree headings", selectmode="browse")
             tv.heading("#0", text="Мод", anchor="w")
             tv.heading("chk", text="")
             tv.heading("all", text="% всех")
             tv.heading("kind", text="% типа")
             tv.heading("tier", text="тир")
+            tv.heading("bar", text="вес", anchor="w")
+            tv.column("bar", width=74, anchor="w", stretch=False)
             tv.column("#0", width=230, stretch=True)
             tv.column("chk", width=26, anchor="center", stretch=False)
             tv.column("all", width=58, anchor="e", stretch=False)
@@ -392,7 +461,7 @@ class MainWindow(tk.Toplevel):
             return tv
 
         self.ess_tv = mk(panes, ("Эссенция", "мод", "тир", "цена"), (190, 170, 40, 60), 0)
-        self.fos_tv = mk(panes, (None, " ", "фоссил", "эффект", "цена"), (0, 26, 110, 190, 60), 1)
+        self.fos_tv = mk(panes, ("Фоссил", "✓", "эффект", "цена"), (150, 28, 190, 60), 1)
         self.ess_tv.bind("<<TreeviewSelect>>", lambda e: self._ef_changed("ess"))
         self.fos_tv.bind("<Button-1>", self._fossil_click)
         self.fos_sel: list[str] = []
@@ -426,9 +495,10 @@ class MainWindow(tk.Toplevel):
         tv = self.fos_tv
         tv.delete(*tv.get_children())
         for name, fo in self.fos_list.items():
-            tv.insert("", "end", iid=name, values=("☑" if name in self.fos_sel else "☐",
-                      name.replace(" Fossil", ""), fo.describe, self._price_txt(name)),
-                      tags=("sel",) if name in self.fos_sel else ())
+            img = self._row_icon(name)
+            tv.insert("", "end", iid=name, text=" " + name.replace(" Fossil", ""),
+                      values=("☑" if name in self.fos_sel else "☐", fo.describe, self._price_txt(name)),
+                      tags=("sel",) if name in self.fos_sel else (), **({"image": img} if img else {}))
         tv.tag_configure("sel", foreground=GOLD)
 
     def _fill_essences(self):
@@ -442,7 +512,9 @@ class MainWindow(tk.Toplevel):
                 continue
             fe = cc.essence_entry(self.pool, e.mod)
             self.ess_list[e.id] = e
-            tv.insert("", "end", iid=e.id, text=e.name, values=(short(e.mod.text), f"T{fe.tier}", self._price_txt(e.name)))
+            img = self._row_icon(e.name)
+            tv.insert("", "end", iid=e.id, text=" " + e.name, values=(short(e.mod.text), f"T{fe.tier}",
+                      self._price_txt(e.name)), **({"image": img} if img else {}))
 
     def _fossil_click(self, e):
         iid = self.fos_tv.identify_row(e.y)
@@ -548,15 +620,15 @@ class MainWindow(tk.Toplevel):
         tk.Label(side, text="Валюта", bg=BG, fg=GOLD, font=(FONT, 10, "bold"), anchor="w").pack(fill="x")
         grid = tk.Frame(side, bg=BG)
         grid.pack(fill="x", pady=(2, 6))
-        buttons = [("Transmutation", "transmute"), ("Alteration", "alteration"), ("Augmentation", "augment"),
-                   ("Regal", "regal"), ("Alchemy", "alchemy"), ("Chaos", "chaos"), ("Exalted", "exalt"),
-                   ("Annulment", "annul"), ("Scouring", "scour"), ("Divine", "divine")]
-        for i, (label, act) in enumerate(buttons):
-            b = self._act(grid, label, lambda a=act: self.emu_do(a))
-            b.configure(font=(FONT, 9), padx=6, pady=3, width=12)
-            b.grid(row=i // 2, column=i % 2, sticky="we", padx=2, pady=2)
-        grid.columnconfigure(0, weight=1)
-        grid.columnconfigure(1, weight=1)
+        buttons = [("Transmutation", "transmute", "Transmute"), ("Alteration", "alteration", "Alteration"),
+                   ("Augmentation", "augment", "Augment"), ("Regal", "regal", "Regal"),
+                   ("Alchemy", "alchemy", "Alchemy"), ("Chaos", "chaos", "Chaos"), ("Exalted", "exalt", "Exalted"),
+                   ("Annulment", "annul", "Annul"), ("Scouring", "scour", "Scour"), ("Divine", "divine", "Divine")]
+        for i, (name, act, label) in enumerate(buttons):
+            self._tile(grid, name, label, lambda a=act: self.emu_do(a)).grid(row=i // 5, column=i % 5, sticky="we",
+                                                                          padx=2, pady=2)
+        for c in range(5):
+            grid.columnconfigure(c, weight=1, uniform="cur")
 
         tk.Label(side, text="Эссенция", bg=BG, fg=GOLD, font=(FONT, 10, "bold"), anchor="w").pack(fill="x", pady=(4, 0))
         er = tk.Frame(side, bg=BG)
@@ -567,6 +639,8 @@ class MainWindow(tk.Toplevel):
         popdown_on_top(self.emu_ess_box)
         self.emu_ess_box.pack(side="left", fill="x", expand=True)
         self._btn(er, "применить", self.emu_essence).pack(side="left")
+        self.emu_ess_grid = tk.Frame(side, bg=BG)
+        self.emu_ess_grid.pack(fill="x", pady=(3, 0))
 
         tk.Label(side, text="Фоссилы (выбираются во вкладке «Эссенции и фоссилы»)", bg=BG, fg=GOLD,
                  font=(FONT, 9, "bold"), anchor="w", wraplength=300, justify="left").pack(fill="x", pady=(6, 0))
@@ -591,32 +665,33 @@ class MainWindow(tk.Toplevel):
         side2.grid(row=1, column=2, sticky="nsew", padx=(4, 6), pady=(0, 6))
         tk.Label(side2, text="Влияние · Eldritch", bg=BG, fg=GOLD, font=(FONT, 10, "bold"), anchor="w").pack(fill="x", pady=(0, 0))
         ir = tk.Frame(side2, bg=BG)
-        ir.pack(fill="x")
-        self.emu_conq_var = tk.StringVar(value="Crusader")
-        cq = ttk.Combobox(ir, textvariable=self.emu_conq_var, state="readonly", style="D.TCombobox",
-                          values=list(inf.CONQUEROR_ORBS), width=10, font=(FONT, 9))
-        popdown_on_top(cq)
-        cq.pack(side="left")
-        self._btn(ir, "Exalt завоевателя", lambda: self.emu_do("conqueror", name=self.emu_conq_var.get())).pack(side="left")
+        ir.pack(fill="x", pady=(2, 0))
+        for i, name in enumerate(inf.CONQUEROR_ORBS):
+            self._tile(ir, name, name, lambda n=name: self.emu_do("conqueror", name=n),
+                       tip=f"{inf.CONQUEROR_ORBS[name]}: добавляет мод влияния {name}").grid(
+                row=0, column=i, sticky="we", padx=2, pady=2)
+            ir.columnconfigure(i, weight=1, uniform="cq")
         er2 = tk.Frame(side2, bg=BG)
-        er2.pack(fill="x", pady=(2, 0))
+        er2.pack(fill="x", pady=(4, 0))
         self.emu_eld_var = tk.StringVar(value="Grand")
         eb = ttk.Combobox(er2, textvariable=self.emu_eld_var, state="readonly", style="D.TCombobox",
-                          values=[inf.ELDRITCH_TIERS[i] for i in (1, 2, 3, 4)], width=10, font=(FONT, 9))
+                          values=[inf.ELDRITCH_TIERS[i] for i in (1, 2, 3, 4)], width=9, font=(FONT, 9))
         popdown_on_top(eb)
-        eb.pack(side="left")
+        eb.pack(side="left", padx=(0, 4))
         lvl = lambda: {v: k for k, v in inf.ELDRITCH_TIERS.items()}[self.emu_eld_var.get()]
-        self._btn(er2, "Ember (Exarch)", lambda: self.emu_do("eldritch_currency", side="exarch", level=lvl())).pack(side="left")
-        self._btn(er2, "Ichor (Eater)", lambda: self.emu_do("eldritch_currency", side="eater", level=lvl())).pack(side="left")
+        for side_key, name, label in (("exarch", "Exarch", "Ember"), ("eater", "Eater", "Ichor")):
+            t = self._tile(er2, name, label, lambda k=side_key: self.emu_do("eldritch_currency", side=k, level=lvl()),
+                           size=24, compact=True, tip=f"Eldritch {label}: имплицит {'Searing Exarch' if side_key == 'exarch' else 'Eater of Worlds'}")
+            t.pack(side="left", padx=2, fill="x", expand=True)
         eg = tk.Frame(side2, bg=BG)
         eg.pack(fill="x", pady=(2, 0))
-        for i, (label, act) in enumerate((("Eldritch Chaos", "eldritch_chaos"), ("Eldritch Exalt", "eldritch_exalt"),
-                                          ("Eldritch Annul", "eldritch_annul"), ("Orb of Conflict", "conflict"))):
-            b = self._act(eg, label, lambda a=act: self.emu_do(a))
-            b.configure(font=(FONT, 9), padx=4, pady=2)
-            b.grid(row=i // 2, column=i % 2, sticky="we", padx=2, pady=2)
-        eg.columnconfigure(0, weight=1)
-        eg.columnconfigure(1, weight=1)
+        for i, (name, act, label) in enumerate((("Eldritch Chaos", "eldritch_chaos", "Chaos"),
+                                                ("Eldritch Exalt", "eldritch_exalt", "Exalt"),
+                                                ("Eldritch Annul", "eldritch_annul", "Annul"),
+                                                ("Orb of Conflict", "conflict", "Conflict"))):
+            self._tile(eg, name, label, lambda a=act: self.emu_do(a), tip=name).grid(
+                row=0, column=i, sticky="we", padx=2, pady=2)
+            eg.columnconfigure(i, weight=1, uniform="eg")
         tk.Label(side2, text="Harvest", bg=BG, fg=GOLD, font=(FONT, 10, "bold"), anchor="w").pack(fill="x", pady=(8, 0))
         hr = tk.Frame(side2, bg=BG)
         hr.pack(fill="x")
@@ -636,14 +711,11 @@ class MainWindow(tk.Toplevel):
         tk.Label(side2, text="Veiled (Jun)", bg=BG, fg=GOLD, font=(FONT, 10, "bold"), anchor="w").pack(fill="x", pady=(8, 0))
         vg = tk.Frame(side2, bg=BG)
         vg.pack(fill="x")
-        for i, (label, cmd) in enumerate((("Veiled Chaos", lambda: self.emu_do("veiled_chaos")),
-                                          ("Veiled Exalt", lambda: self.emu_do("veiled_exalt")),
-                                          ("Unveil (1 из 3)", self.emu_unveil))):
-            b = self._act(vg, label, cmd)
-            b.configure(font=(FONT, 9), padx=4, pady=2)
-            b.grid(row=i // 2, column=i % 2, sticky="we", padx=2, pady=2)
-        vg.columnconfigure(0, weight=1)
-        vg.columnconfigure(1, weight=1)
+        for i, (name, label, cmd) in enumerate((("Veiled Chaos", "Veiled Chaos", lambda: self.emu_do("veiled_chaos")),
+                                                ("Veiled Exalt", "Veiled Exalt", lambda: self.emu_do("veiled_exalt")),
+                                                ("Unveil", "Unveil (1 из 3)", self.emu_unveil))):
+            self._tile(vg, name, label, cmd, size=24, compact=True).grid(row=0, column=i, sticky="we", padx=2, pady=2)
+            vg.columnconfigure(i, weight=1, uniform="vg")
         self.emu_unveil_frame = tk.Frame(side2, bg=BG)
         self.emu_unveil_frame.pack(fill="x", pady=(4, 0))
         self.emu_spent = tk.Label(side, text="", bg=BG, fg=FG, font=(FONT, 9), anchor="w", justify="left",
@@ -667,6 +739,7 @@ class MainWindow(tk.Toplevel):
                if not (e.max_ilvl and self.pool.ilvl > e.max_ilvl)]
         self._emu_ess = {f"{e.name} — {short(e.mod.text)}": e for e in ess}
         self.emu_ess_box["values"] = list(self._emu_ess)
+        self._emu_ess_icons(ess)
         opts = self.emu.bench_options()
         metas = [o for o in opts if any(g.startswith("ItemGeneration") for g in o["mod"].groups)]
         rest = [o for o in opts if o not in metas]
@@ -677,6 +750,33 @@ class MainWindow(tk.Toplevel):
             return f"{'★ ' if o in metas else ''}{o['mod'].text.splitlines()[0]}  [{cost}]"
         self._emu_bench = {lbl(o): o for o in metas + rest}
         self.emu_bench_box["values"] = list(self._emu_bench)
+
+    def _emu_ess_icons(self, ess):
+        """Сетка иконок эссенций как на Craft of Exile: по одной на вид, лучший доступный тир."""
+        for w in self.emu_ess_grid.winfo_children():
+            w.destroy()
+        order = {t: i for i, t in enumerate(icons.ESSENCE_TIERS)}
+        best = {}
+        for e in ess:
+            tier, _, kind = e.name.partition(" Essence of ")
+            if not kind:
+                tier, kind = "", e.name.replace("Essence of ", "")
+            cur = best.get(kind)
+            if cur is None or order.get(tier, -1) < order.get(cur[0], 99) or not cur[0]:
+                best[kind] = (tier, e)
+        for i, (kind, (tier, e)) in enumerate(sorted(best.items())):
+            t = tk.Label(self.emu_ess_grid, bg=TILE, cursor="hand2", highlightthickness=1, highlightbackground=LINE,
+                         text=kind[:4], fg=MUTED, font=(FONT, 7), width=4, height=2)
+            t.grid(row=i // 9, column=i % 9, padx=1, pady=1)
+            tip = f"{e.name}: {short(e.mod.text)} · {self._price_txt(e.name)}"
+            t.bind("<Button-1>", lambda ev, x=e: self.emu_do("essence", essence=x))
+            t.bind("<Enter>", lambda ev, w=t, tp=tip: (w.configure(bg=TILE_HI, highlightbackground="#6b5124"),
+                                                      self.emu_status.configure(text=tp, fg=MUTED)))
+            t.bind("<Leave>", lambda ev, w=t: w.configure(bg=TILE, highlightbackground=LINE))
+            img = self._row_icon(e.name, 28)
+            if img is not None:
+                t.configure(image=img, text="", width=30, height=30)
+                t._img = img
 
     def emu_do(self, action, **kw):
         if not self.emu:
@@ -751,7 +851,14 @@ class MainWindow(tk.Toplevel):
         c.insert("end", f"{names[em.rarity]} · ilvl {em.pool.ilvl} · префиксов {len(em.prefixes)}/{mp if em.rarity != 'Magic' else 1}"
                         f" · суффиксов {len(em.suffixes)}/{ms if em.rarity != 'Magic' else 1}\n\n", "m")
         if em.influences:
-            c.insert("end", "Влияние: " + ", ".join(em.influences) + "\n", "infl")
+            c.insert("end", "Влияние: ", "infl")
+            st = icons.store()
+            for n in em.influences:
+                img = st.get(n, 20) if st else None
+                if img is not None:
+                    c.image_create("end", image=img, padx=2)
+                c.insert("end", n + "  ", "infl")
+            c.insert("end", "\n")
         for side_, title_ in (("exarch", "Searing Exarch"), ("eater", "Eater of Worlds")):
             im_ = getattr(em, side_)
             if im_:
@@ -792,8 +899,18 @@ class MainWindow(tk.Toplevel):
         total = sum(self.prices.get(k) * v for k, v in em.spent.items())
         parts_ = [f"{k.replace('Orb of ', '').replace(' Orb', '')}: {v}" for k, v in em.spent.items() if v]
         c.insert("end", "\nПотрачено: ", "h")
-        c.insert("end", (" · ".join(parts_) + f"   ≈ {total:,.0f}c ({total / self.prices.divine:.2f} div)".replace(",", " "))
-                 if parts_ else "ничего", "m")
+        st = icons.store()
+        if not parts_:
+            c.insert("end", "ничего", "m")
+        for i, (k, v) in enumerate((k, v) for k, v in em.spent.items() if v):
+            img = st.get(k, 20) if st else None
+            if img is not None:
+                c.image_create("end", image=img, padx=2)
+                c.insert("end", f"×{v}  ", "m")
+            else:
+                c.insert("end", f"{k.replace('Orb of ', '').replace(' Orb', '')}: {v}  ", "m")
+        if parts_:
+            c.insert("end", f"  ≈ {total:,.0f}c ({total / self.prices.divine:.2f} div)".replace(",", " "), "m")
         c.configure(state="disabled")
 
     # ------------------------------------------------------------ сокеты
@@ -1073,6 +1190,7 @@ class MainWindow(tk.Toplevel):
         f = self.filter_var.get().lower().strip()
         for kind, tv in self.trees.items():
             tv.delete(*tv.get_children())
+            top = max((g["chance_kind"] for g in self.table["groups"] if g["kind"] == kind), default=0) or 1
             for g in self.table["groups"]:
                 if g["kind"] != kind:
                     continue
@@ -1087,12 +1205,13 @@ class MainWindow(tk.Toplevel):
                 is_inf = any(inf.is_influence_mod(e.mod) for e in self.pool.all
                              if e.mod.kind == g["kind"] and e.mod.type == g["type"])
                 tv.insert("", "end", iid=gid, text=("◆ " if is_inf else "") + short(g["text"]),
-                          values=("☑" if sel else "☐", pct(g["chance_all"]), pct(g["chance_kind"]), f"{i18n.t('до T')}{tier}"),
+                          values=("☑" if sel else "☐", pct(g["chance_all"]), pct(g["chance_kind"]),
+                                  weight_bar(g["chance_kind"] / top), f"{i18n.t('до T')}{tier}"),
                           tags=("sel",) if sel else (("infl",) if is_inf else ()))
                 for t in g["tiers"]:
                     rng_ = " ".join(__import__("re").findall(r"\([\d.]+-[\d.]+\)|(?<![\w(])\d+(?:\.\d+)?(?![\w)-])", t["text"]))
                     tv.insert(gid, "end", text=f"T{t['tier']}  {rng_}   {t['name']} · ilvl {t['level']}",
-                              values=("", "", f"{t['weight']}", ""), tags=("tier" if t["available"] else "na",))
+                              values=("", "", f"{t['weight']}", "", ""), tags=("tier" if t["available"] else "na",))
 
     def _group(self, gid: str):
         kind, typ = gid.split("|", 1)
@@ -1120,7 +1239,7 @@ class MainWindow(tk.Toplevel):
                 del self.selected[key]
             else:
                 self.selected[key] = {"max_tier": cur_t, "label": short(g["text"])}
-        elif col == "#4":  # тир по кругу
+        elif col == "#5":  # тир по кругу
             nxt = avail[(avail.index(cur_t) + 1) % len(avail)] if cur_t in avail else avail[0]
             tv.set(iid, "tier", f"{i18n.t('до T')}{nxt}")
             if key in self.selected:
@@ -1173,8 +1292,13 @@ class MainWindow(tk.Toplevel):
         o.delete("1.0", "end")
         best = next((r for r in results if r["cost_chaos"] is not None), None)
         dv = self.prices.divine
+        st = icons.store()
         for r in results:
-            o.insert("end", r["name"], "h")
+            for n in (st.find_all(r["name"] + " " + r["how"][:80], 4) if st else []):
+                img = st.get(n, 22)
+                if img is not None:
+                    o.image_create("end", image=img, padx=1)
+            o.insert("end", (" " if st else "") + r["name"], "h")
             if r is best:
                 o.insert("end", "   дешевле всего", "best")
             o.insert("end", "\n" + r["how"] + "\n", "m")

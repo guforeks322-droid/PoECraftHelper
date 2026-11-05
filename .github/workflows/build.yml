@@ -30,7 +30,7 @@ jobs:
       - name: Сборка exe
         run: >
           pyinstaller --onefile --windowed --name PoECraftHelper
-          --hidden-import editor --hidden-import mainwin --hidden-import settings_win
+          --hidden-import editor --hidden-import mainwin --hidden-import settings_win --hidden-import hub --hidden-import PIL.ImageTk
           --add-data "poecraft/ui;poecraft/ui" -y overlay.py
 
       - name: Проверка запуска exe (импорт и данные)

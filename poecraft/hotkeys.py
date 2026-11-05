@@ -9,7 +9,7 @@ from __future__ import annotations
 import sys
 import threading
 
-DEFAULT_HOTKEYS = {"overlay": "Ctrl+Shift+O", "workshop": "Ctrl+Shift+M"}
+DEFAULT_HOTKEYS = {"overlay": "Ctrl+Shift+O", "workshop": "Ctrl+Shift+M", "hub": "Ctrl+Shift+H"}
 
 MOD = {"ctrl": 0x0002, "alt": 0x0001, "shift": 0x0004, "win": 0x0008}
 MOD_NOREPEAT = 0x4000
