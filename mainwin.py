@@ -629,7 +629,6 @@ class MainWindow(tk.Toplevel):
         self.emu_card.on_tip = lambda t: t and self.emu_status.configure(text=t, fg=MUTED)
         self.emu_card.on_click = self.emu_apply_selected
         self.emu_card.pack(fill="both", expand=True)
-        self.bind("<space>", lambda e: (not isinstance(e.widget, (tk.Entry, ttk.Combobox))) and self.emu_apply_selected())
 
         # ---- центр: валюта + вкладки
         mid = tk.Frame(f, bg=BG)
@@ -719,7 +718,7 @@ class MainWindow(tk.Toplevel):
         self.sel_lbl = tk.Label(r1, text="не выбран — кликни по валюте справа", bg=BG1, fg=MUTED, font=(FONT, 10),
                                 anchor="w")
         self.sel_lbl.pack(side="left", fill="x", expand=True)
-        self.apply_btn = self._act(r1, "Применить  ␣", self.emu_apply_selected)
+        self.apply_btn = self._act(r1, "Применить", self.emu_apply_selected)
         self.apply_btn.pack(side="right")
         r2 = tk.Frame(bar, bg=BG1)
         r2.pack(fill="x", padx=8, pady=(2, 6))
@@ -733,13 +732,13 @@ class MainWindow(tk.Toplevel):
         tk.Checkbutton(r2, text="+Aug", variable=self.aug_var, bg=BG1, fg=MUTED, selectcolor=BG2,
                        activebackground=BG1, activeforeground=GOLD, font=(FONT, 8), bd=0,
                        highlightthickness=0).pack(side="right")
-        self.sim_lbl = tk.Label(bar, text="Клик по предмету или «Применить» (пробел) — кинуть выбранное. "
+        self.sim_lbl = tk.Label(bar, text="Клик по предмету или «Применить» — кинуть выбранное. "
                                           "Двойной клик по валюте — кинуть сразу.", bg=BG1, fg=DIM,
                                 font=(FONT, 8), anchor="w", justify="left", wraplength=410)
         self.sim_lbl.pack(fill="x", padx=8, pady=(0, 6))
 
     def emu_pick(self, action, **kw):
-        """Выбрать метод (валюту/эссенцию/фоссилы…). Применяется кликом по предмету, пробелом или «Применить»."""
+        """Выбрать метод (валюту/эссенцию/фоссилы…). Применяется кликом по предмету или «Применить»."""
         if self._sim_job:
             self.emu_sim_stop()
         icon, label = self._step_of(action, kw)
