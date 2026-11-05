@@ -7,7 +7,7 @@ import re
 import urllib.request
 
 APP_VERSION = "0.21.0"
-DEFAULT_REPO = ""   # например "dmitry/poe-craft-helper" — когда появится репозиторий с релизами
+DEFAULT_REPO = "guforeks322-droid/PoECraftHelper"   # релизы с обновлениями
 
 
 def _ver(s: str) -> tuple:
