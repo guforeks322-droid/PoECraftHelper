@@ -191,8 +191,12 @@ class SettingsWindow(tk.Toplevel):
     def _row(self, parent, label, sub=False):
         r = tk.Frame(parent, bg=BG)
         r.pack(fill="x", pady=3)
-        tk.Label(r, text=label, bg=BG, fg=MUTED if sub else FG, font=(FONT, 10), anchor="w",
-                 width=34, padx=16 if sub else 0).pack(side="left")
+        lf = tk.Frame(r, bg=BG)          # колонка подписи: не уже 300px, длинный текст переносится
+        lf.pack(side="left", fill="y")
+        tk.Frame(lf, bg=BG, width=300, height=0).pack(side="top")
+        tk.Label(lf, text=label, bg=BG, fg=MUTED if sub else FG, font=(FONT, 10), anchor="w", justify="left",
+                 wraplength=284 - (16 if sub else 0), padx=16 if sub else 0).pack(side="top", anchor="w", fill="x",
+                                                                                   expand=True)
         return r
 
     def _check(self, parent, label, key, default=False):
@@ -201,6 +205,7 @@ class SettingsWindow(tk.Toplevel):
         r.pack(fill="x", pady=3)
         cb = tk.Checkbutton(r, text=label, variable=v, bg=BG, fg=FG, selectcolor=FIELD, activebackground=BG,
                             activeforeground=GOLD, font=(FONT, 10), highlightthickness=0, bd=0,
+                            wraplength=560, justify="left", anchor="w",
                             command=lambda: self.draft.__setitem__(key, v.get()))
         cb.pack(side="left")
         return v
@@ -308,14 +313,14 @@ class SettingsWindow(tk.Toplevel):
     def _alpha(self, p, key, default, live):
         r = self._row(p, "Непрозрачность")
         v = tk.DoubleVar(value=self.draft.get(key, default))
-        lbl = tk.Label(r, text=f"{v.get():.0%}", bg=BG, fg=GOLD, font=(FONT, 10), width=5)
+        lbl = tk.Label(r, text=f"{v.get():.0%}", bg=BG, fg=GOLD, font=(FONT, 10), width=6)
 
         def changed(x):
             val = round(float(x), 2)
             self.draft[key] = val
             lbl.configure(text=f"{val:.0%}")
             live(val)
-        s = ttk.Scale(r, from_=0.4, to=1.0, variable=v, command=changed, length=240, style="S.Horizontal.TScale")
+        s = ttk.Scale(r, from_=0.4, to=1.0, variable=v, command=changed, length=200, style="S.Horizontal.TScale")
         s.pack(side="left")
         lbl.pack(side="left", padx=8)
 
