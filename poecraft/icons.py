@@ -18,6 +18,7 @@ from .data import APP_DIR
 
 ICON_DIR = APP_DIR / "data" / "icons"
 INDEX = ICON_DIR / "index.json"
+ART_DIR = ICON_DIR / "items"
 CDN = "https://web.poecdn.com"
 NINJA = "https://poe.ninja/poe1/api/economy/exchange/current/overview?league={league}&type={typ}"
 TYPES = ("Currency", "Essence", "Fossil", "Resonator")
@@ -143,6 +144,7 @@ class IconStore:
         self.index: dict[str, str] = {}
         self._img: dict[tuple, object] = {}
         self._subs: list = []
+        self._art_pending: set = set()
         self.ready = False
         try:
             self.index = json.loads(INDEX.read_text(encoding="utf-8"))
@@ -195,6 +197,45 @@ class IconStore:
                 pass
 
     # ------------------------------------------------------------ картинки
+    # ------------------------------------------------------------ картинки предметов (баз)
+    def base_art(self, base_id: str, dds: str, max_h: int = 150, max_w: int = 110):
+        """Картинка базы предмета, как в инвентаре игры. Нет файла — скачиваем в фоне и зовём подписчиков."""
+        key = ("art", base_id, max_h, max_w)
+        if key in self._img:
+            return self._img[key]
+        p = ART_DIR / f"{slug(base_id)}.png"
+        if not p.exists():
+            if dds and base_id not in self._art_pending:
+                self._art_pending.add(base_id)
+                threading.Thread(target=self._dl_art, args=(base_id, dds, p), daemon=True).start()
+            return None
+        try:
+            from PIL import Image, ImageTk
+            im = Image.open(p).convert("RGBA")
+            im.thumbnail((max_w, max_h), Image.LANCZOS)
+            img = ImageTk.PhotoImage(im, master=self.root)
+        except Exception:
+            try:
+                import tkinter as tk
+                img = tk.PhotoImage(file=str(p), master=self.root)
+            except Exception:
+                img = None
+        self._img[key] = img
+        return img
+
+    def _dl_art(self, base_id, dds, path):
+        url = f"{CDN}/image/{dds.rsplit('.', 1)[0]}.png?scale=1"
+        try:
+            ART_DIR.mkdir(parents=True, exist_ok=True)
+            req = urllib.request.Request(url, headers=UA)
+            with urllib.request.urlopen(req, timeout=20) as r:
+                data = r.read()
+            if data[:4] == b"\x89PNG":
+                path.write_bytes(data)
+                self.root.after(0, self._notify)
+        except Exception:
+            pass
+
     def find_all(self, text: str, limit: int = 4) -> list[str]:
         return find_all(text, self.index, limit)
 
