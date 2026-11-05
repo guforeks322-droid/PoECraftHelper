@@ -121,17 +121,22 @@ class HubWindow(tk.Toplevel):
         return b
 
     def _drag_start(self, e):
+        from poecraft import winmove
         self._dx, self._dy = e.x_root - self.winfo_x(), e.y_root - self.winfo_y()
+        if winmove.native_drag(self, self._remember_geo):
+            return "break"
 
     def _drag_move(self, e):
-        self.geometry(f"+{e.x_root - self._dx}+{e.y_root - self._dy}")
+        from poecraft import winmove
+        winmove.throttled_move(self, e.x_root - self._dx, e.y_root - self._dy)
 
     def _resize_start(self, e):
         self._rs = (e.x_root, e.y_root, self.winfo_width(), self.winfo_height())
 
     def _resize_move(self, e):
         x, y, w, h = self._rs
-        self.geometry(f"{max(660, w + e.x_root - x)}x{max(540, h + e.y_root - y)}")
+        from poecraft import winmove
+        winmove.throttled_geometry(self, f"{max(660, w + e.x_root - x)}x{max(540, h + e.y_root - y)}")
 
     def _remember_geo(self):
         self.app.settings["hub_geo"] = self.geometry()
