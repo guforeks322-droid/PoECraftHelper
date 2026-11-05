@@ -781,6 +781,9 @@ class MainWindow(tk.Toplevel):
                 em.apply("augment")
 
     def emu_sim_toggle(self):
+        if self._sim_job and getattr(self, "_sim", None) is None and getattr(self, "_fixed_finish", None):
+            self.after_cancel(self._sim_job)
+            return self._fixed_finish()
         if self._sim_job:
             return self.emu_sim_stop()
         if not self.emu or not self._emu_sel:
@@ -861,59 +864,79 @@ class MainWindow(tk.Toplevel):
             n = max(1, min(2000, int(self.sim_n.get())))
         except ValueError:
             n = 100
+        if self._sim_job:
+            return
         import random as _r
+        import time as _t
         em = self.emu
         start = em.snapshot()
-        hist, steps_saved = list(em.history), list(self._emu_steps)
-        rng_state = em.rng.getstate()
+        saved = (list(em.history), list(self._emu_steps), em.rng.getstate())
         targets = self._targets()
         limit = 20000
-        attempts, costs = [], []
-        self.sim_lbl.configure(text=f"Прогоняю {n} предметов…", fg=GOLD)
-        self.update_idletasks()
-        import time as _t
-        t0 = _t.time()
-        for i in range(n):
+        res = {"attempts": [], "costs": [], "t0": _t.time()}
+
+        def restore_start():
             (em.rarity, em.mods, em.spent, em.log, infl, em.exarch, em.eater) = (
                 start[0], [type(m)(m.entry, m.crafted, m.fractured, list(m.values), m.veiled) for m in start[1]],
                 dict(start[2]), list(start[3]), list(start[4]), start[5], start[6])
-            em.rng = _r.Random()
-            k = 0
+            if infl != em.influences:
+                em.influences = list(infl)
+                em.pool = em._make_pool()
+
+        def work():
+            """Один предмет за раз, кусками по ~40 мс — интерфейс не замирает."""
+            t_end = _t.time() + 0.04
             try:
-                while k < limit and not all(any(not m.crafted and t.ok(m.entry) for m in em.mods) for t in targets):
+                while _t.time() < t_end:
+                    if res.get("cur") is None:
+                        if len(res["attempts"]) >= n or _t.time() - res["t0"] > 60:
+                            return finish()
+                        restore_start()
+                        em.rng = _r.Random()
+                        res["cur"] = 0
+                    if res["cur"] >= limit or all(any(not m.crafted and t.ok(m.entry) for m in em.mods)
+                                                  for t in targets):
+                        res["attempts"].append(res["cur"])
+                        res["costs"].append(self._spent_cost(em.spent, start[2]))
+                        res["cur"] = None
+                        continue
                     self._sim_once(em)
-                    k += 1
+                    res["cur"] += 1
                     if len(em.history) > 20:
                         del em.history[:]
-            except CraftError:
-                break
-            attempts.append(k)
-            costs.append(self._spent_cost(em.spent, start[2]))
-            if _t.time() - t0 > 25:
-                break
-        # вернуть предмет как был
-        (em.rarity, em.mods, em.spent, em.log, infl, em.exarch, em.eater) = start
-        if infl != em.influences:
-            em.influences = list(infl)
-            em.pool = em._make_pool()
-        em.history, self._emu_steps = hist, steps_saved
-        em.rng.setstate(rng_state)
-        if not attempts:
-            self.sim_lbl.configure(text="Этот метод не работает на таком предмете.", fg=WARN)
-            return
-        a = sorted(attempts)
-        c = sorted(costs)
-        med = a[len(a) // 2]
-        p90 = a[min(len(a) - 1, int(len(a) * 0.9))]
-        fail = sum(1 for x in attempts if x >= limit)
-        dv = self.prices.divine
-        avg_c = sum(c) / len(c)
-        sp = lambda x: f"{x:,.0f}".replace(",", " ")
-        self.sim_lbl.configure(
-            text=(f"{len(a)} предметов: в среднем {sp(sum(a) / len(a))} попыток (медиана {sp(med)}, 90% — до {sp(p90)}) · "
-                  f"≈ {sp(avg_c)}c ({avg_c / dv:.2f} div) за предмет"
-                  + (f" · {fail} не дошли за {sp(limit)}" if fail else "")), fg=GOOD)
-        self._emu_render()
+            except CraftError as e:
+                res["error"] = str(e)
+                return finish()
+            self.sim_lbl.configure(text=f"Прогоняю: {len(res['attempts'])}/{n} предметов…", fg=GOLD)
+            self._sim_job = self.after(1, work)
+
+        def finish():
+            self._sim_job = None
+            self.sim_btn.configure(text="▶ Крутить до цели", fg=GOOD)
+            (em.rarity, em.mods, em.spent, em.log, infl, em.exarch, em.eater) = start
+            if infl != em.influences:
+                em.influences = list(infl)
+                em.pool = em._make_pool()
+            em.history, self._emu_steps = saved[0], saved[1]
+            em.rng.setstate(saved[2])
+            a, c = sorted(res["attempts"]), res["costs"]
+            if not a:
+                self.sim_lbl.configure(text=res.get("error") or "Этот метод не работает на таком предмете.", fg=WARN)
+                return self._emu_render()
+            sp = lambda x: f"{x:,.0f}".replace(",", " ")
+            med, p90 = a[len(a) // 2], a[min(len(a) - 1, int(len(a) * 0.9))]
+            fail = sum(1 for x in a if x >= limit)
+            avg_c = sum(c) / len(c)
+            self.sim_lbl.configure(
+                text=(f"{len(a)} предметов: в среднем {sp(sum(a) / len(a))} попыток (медиана {sp(med)}, "
+                      f"90% — до {sp(p90)}) · ≈ {sp(avg_c)}c ({avg_c / self.prices.divine:.2f} div) за предмет"
+                      + (f" · {fail} не дошли за {sp(limit)}" if fail else "")), fg=GOOD)
+            self._emu_render()
+
+        self.sim_btn.configure(text="■ Стоп", fg=WARN)
+        self._sim = None
+        self._fixed_finish = finish
+        self._sim_job = self.after(1, work)
 
     STEP_TIPS = {
         "transmute": "Transmutation: обычный → магический (1–2 мода)",
@@ -1440,7 +1463,8 @@ class MainWindow(tk.Toplevel):
                 self._emu_steps.pop()
         except CraftError:
             self._emu_steps = self._emu_steps[:n_steps]
-        self.emu_status.configure(text=f"Вернулся к шагу {n_steps}.", fg=MUTED)
+        self.emu_card._prev = None          # не подсвечивать «убрано» после отката на несколько шагов
+        self.emu_status.configure(text=f"Вернулся к шагу {n_steps}." if n_steps else "Вернулся к началу.", fg=MUTED)
         self._emu_render()
 
     # ------------------------------------------------------------ сокеты
