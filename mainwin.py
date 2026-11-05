@@ -28,6 +28,7 @@ from poecraft.prices import Prices
 
 BG, BG1, BG2, LINE = "#0f0d0a", "#16130f", "#1f1a14", "#3a3127"
 TILE, TILE_HI = "#1a1611", "#2a2116"
+DIM = "#5a5248"
 GOLD_LINE = "#6b5124"
 FG, MUTED, GOLD, GOOD, WARN, BLUE = "#d9d0c1", "#8a7f70", "#e3b55b", "#7ec27a", "#e07a5f", "#8fb3e0"
 FONT = "Segoe UI"
@@ -621,9 +622,14 @@ class MainWindow(tk.Toplevel):
 
         # ---- слева: предмет
         from itemcard import ItemCard
-        self.emu_card = ItemCard(f, self.data, on_rewind=self.emu_rewind)
+        left = tk.Frame(f, bg=BG)
+        left.grid(row=1, column=0, sticky="nsew", padx=(6, 6), pady=(0, 6))
+        self._build_method_bar(left)
+        self.emu_card = ItemCard(left, self.data, on_rewind=self.emu_rewind)
         self.emu_card.on_tip = lambda t: t and self.emu_status.configure(text=t, fg=MUTED)
-        self.emu_card.grid(row=1, column=0, sticky="nsew", padx=(6, 6), pady=(0, 6))
+        self.emu_card.on_click = self.emu_apply_selected
+        self.emu_card.pack(fill="both", expand=True)
+        self.bind("<space>", lambda e: (not isinstance(e.widget, (tk.Entry, ttk.Combobox))) and self.emu_apply_selected())
 
         # ---- центр: валюта + вкладки
         mid = tk.Frame(f, bg=BG)
@@ -636,7 +642,7 @@ class MainWindow(tk.Toplevel):
                    ("Alchemy", "alchemy", "Alchemy"), ("Chaos", "chaos", "Chaos"), ("Exalted", "exalt", "Exalted"),
                    ("Annulment", "annul", "Annul"), ("Scouring", "scour", "Scour"), ("Divine", "divine", "Divine")]
         for i, (name, act, label) in enumerate(buttons):
-            self._tile(grid, name, label, lambda a=act: self.emu_do(a), tip=self.STEP_TIPS.get(act, "")).grid(
+            self._tile(grid, name, label, lambda a=act: self.emu_pick(a), tip=self.STEP_TIPS.get(act, "")).grid(
                 row=i // 5, column=i % 5, sticky="we", padx=2, pady=2)
         for c in range(5):
             grid.columnconfigure(c, weight=1, uniform="cur")
@@ -697,6 +703,217 @@ class MainWindow(tk.Toplevel):
                         ("m", dict(foreground=MUTED, font=(FONT, 8)))):
             self.emu_journal.tag_configure(tag, **kw)
         self.emu_journal.configure(state="disabled")
+
+    # ------------------------------------------------------------ выбранный метод (как на Craft of Exile)
+    def _build_method_bar(self, parent):
+        """Плашка «Метод»: что выбрано, кнопка применить и симуляция — над предметом."""
+        self._emu_sel = None
+        self._sim_job = None
+        bar = tk.Frame(parent, bg=BG1, highlightthickness=1, highlightbackground=LINE)
+        bar.pack(fill="x", pady=(0, 6))
+        r1 = tk.Frame(bar, bg=BG1)
+        r1.pack(fill="x", padx=8, pady=(6, 2))
+        tk.Label(r1, text="МЕТОД", bg=BG1, fg=MUTED, font=(FONT, 8, "bold")).pack(side="left")
+        self.sel_icon = tk.Label(r1, bg=BG1)
+        self.sel_icon.pack(side="left", padx=(8, 4))
+        self.sel_lbl = tk.Label(r1, text="не выбран — кликни по валюте справа", bg=BG1, fg=MUTED, font=(FONT, 10),
+                                anchor="w")
+        self.sel_lbl.pack(side="left", fill="x", expand=True)
+        self.apply_btn = self._act(r1, "Применить  ␣", self.emu_apply_selected)
+        self.apply_btn.pack(side="right")
+        r2 = tk.Frame(bar, bg=BG1)
+        r2.pack(fill="x", padx=8, pady=(2, 6))
+        self.sim_btn = self._btn(r2, "▶ Крутить до цели", self.emu_sim_toggle, GOOD)
+        self.sim_btn.pack(side="left")
+        tk.Label(r2, text="предметов:", bg=BG1, fg=MUTED, font=(FONT, 8)).pack(side="left", padx=(10, 2))
+        self.sim_n = tk.StringVar(value="100")
+        self._entry(r2, self.sim_n, 5).pack(side="left")
+        self._btn(r2, "▦ Прогнать", self.emu_sim_fixed).pack(side="left", padx=(4, 0))
+        self.aug_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(r2, text="+Aug", variable=self.aug_var, bg=BG1, fg=MUTED, selectcolor=BG2,
+                       activebackground=BG1, activeforeground=GOLD, font=(FONT, 8), bd=0,
+                       highlightthickness=0).pack(side="right")
+        self.sim_lbl = tk.Label(bar, text="Клик по предмету или «Применить» (пробел) — кинуть выбранное. "
+                                          "Двойной клик по валюте — кинуть сразу.", bg=BG1, fg=DIM,
+                                font=(FONT, 8), anchor="w", justify="left", wraplength=410)
+        self.sim_lbl.pack(fill="x", padx=8, pady=(0, 6))
+
+    def emu_pick(self, action, **kw):
+        """Выбрать метод (валюту/эссенцию/фоссилы…). Применяется кликом по предмету, пробелом или «Применить»."""
+        if self._sim_job:
+            self.emu_sim_stop()
+        icon, label = self._step_of(action, kw)
+        self._emu_sel = (action, kw, icon, label)
+        img = self._row_icon(icon, 26) if icon else None
+        self.sel_icon.configure(image=img or "")
+        self.sel_icon._img = img
+        self.sel_lbl.configure(text=label, fg=GOLD)
+        now = __import__("time").time()
+        last = getattr(self, "_pick_t", (None, 0))
+        self._pick_t = (label, now)
+        if last[0] == label and now - last[1] < 0.35:      # двойной клик по той же валюте — кинуть сразу
+            self.emu_apply_selected()
+
+    def emu_apply_selected(self):
+        if not self._emu_sel:
+            self.emu_status.configure(text="Сначала выбери метод — кликни по валюте, эссенции или фоссилам.", fg=WARN)
+            return
+        action, kw = self._emu_sel[0], self._emu_sel[1]
+        if action == "alteration" and self.aug_var.get():
+            self.emu_do("alteration")
+            if self.emu and self.emu.rarity == "Magic" and len(self.emu.mods) == 1 and not self._goal_met():
+                self.emu_do("augment")
+            return
+        self.emu_do(action, **kw)
+
+    # ------------------------------------------------------------ симуляция
+    def _goal_met(self) -> bool:
+        targets = self._targets()
+        em = self.emu
+        return bool(targets) and em is not None and all(
+            any(not m.crafted and t.ok(m.entry) for m in em.mods) for t in targets)
+
+    def _sim_once(self, em):
+        action, kw = self._emu_sel[0], self._emu_sel[1]
+        em.apply(action, **kw)
+        if action == "alteration" and self.aug_var.get() and em.rarity == "Magic" and len(em.mods) == 1:
+            if not all(any(t.ok(m.entry) for m in em.mods) for t in self._targets()):
+                em.apply("augment")
+
+    def emu_sim_toggle(self):
+        if self._sim_job:
+            return self.emu_sim_stop()
+        if not self.emu or not self._emu_sel:
+            self.emu_status.configure(text="Нужны предмет и выбранный метод (например Chaos или эссенция).", fg=WARN)
+            return
+        if not self._targets():
+            self.emu_status.configure(text="Отметь нужные моды во вкладке «Пул модов» — иначе не понять, когда остановиться.",
+                                      fg=WARN)
+            return
+        if self._goal_met():
+            self.emu_status.configure(text="Цель уже выполнена.", fg=GOOD)
+            return
+        em = self.emu
+        self._sim = {"snap": em.snapshot(), "hist": list(em.history), "n": 0, "spent0": dict(em.spent),
+                     "t0": __import__("time").time()}
+        self.sim_btn.configure(text="■ Стоп", fg=WARN)
+        self._sim_job = self.after(1, self._sim_tick)
+
+    def _sim_tick(self):
+        em, sim = self.emu, self._sim
+        import time as _t
+        t_end = _t.time() + 0.04
+        try:
+            while _t.time() < t_end:
+                self._sim_once(em)
+                sim["n"] += 1
+                if len(em.history) > 50:
+                    del em.history[:-5]
+                if self._goal_met() or sim["n"] >= 200000:
+                    return self.emu_sim_stop(done=True)
+        except CraftError as e:
+            self.emu_status.configure(text=f"Симуляция остановлена: {e}", fg=WARN)
+            return self.emu_sim_stop()
+        cost = self._spent_cost(em.spent, sim["spent0"])
+        self.sim_lbl.configure(text=f"Кручу… попыток {sim['n']:,} · потрачено ≈ {cost:,.0f}c".replace(",", " "), fg=GOLD)
+        self.emu_card.render(em, self._targets(), self.prices)
+        self._sim_job = self.after(15, self._sim_tick)
+
+    def _spent_cost(self, spent, base=None):
+        base = base or {}
+        return sum(self.prices.get(k) * (v - base.get(k, 0)) for k, v in spent.items())
+
+    def emu_sim_stop(self, done=False):
+        if self._sim_job:
+            try:
+                self.after_cancel(self._sim_job)
+            except tk.TclError:
+                pass
+        self._sim_job = None
+        self.sim_btn.configure(text="▶ Крутить до цели", fg=GOOD)
+        sim = getattr(self, "_sim", None)
+        if not sim or not self.emu:
+            return
+        em = self.emu
+        em.history = sim["hist"] + [sim["snap"]]       # «шаг назад» вернёт предмет до автокрутки
+        cost = self._spent_cost(em.spent, sim["spent0"])
+        label = self._emu_sel[3] if self._emu_sel else "?"
+        self._emu_steps.append((self._emu_sel[2] if self._emu_sel else "", f"Автокрутка: {label} ×{sim['n']}",
+                                [("m", f"{sim['n']:,} попыток · ≈ {cost:,.0f}c ({cost / self.prices.divine:.2f} div)"
+                                  .replace(",", " ")),
+                                 ("add" if done else "m", "цель достигнута" if done else "остановлено вручную")]))
+        self.sim_lbl.configure(text=(f"Готово за {sim['n']:,} попыток · ≈ {cost:,.0f}c" if done else
+                                     f"Остановлено после {sim['n']:,} попыток · ≈ {cost:,.0f}c").replace(",", " "),
+                               fg=GOOD if done else MUTED)
+        self._sim = None
+        self._emu_render()
+
+    def emu_sim_fixed(self):
+        """Как «Run fixed simulation» на Craft of Exile: N предметов от текущего состояния, статистика попыток."""
+        if not self.emu or not self._emu_sel or not self._targets():
+            self.emu_status.configure(text="Нужны предмет, выбранный метод и отмеченные нужные моды.", fg=WARN)
+            return
+        if self._goal_met():
+            self.sim_lbl.configure(text="Цель на предмете уже выполнена — откатись (⟲ к началу) или возьми новый "
+                                        "предмет, тогда прогон покажет, сколько стоит дойти до цели.", fg=WARN)
+            return
+        try:
+            n = max(1, min(2000, int(self.sim_n.get())))
+        except ValueError:
+            n = 100
+        import random as _r
+        em = self.emu
+        start = em.snapshot()
+        hist, steps_saved = list(em.history), list(self._emu_steps)
+        rng_state = em.rng.getstate()
+        targets = self._targets()
+        limit = 20000
+        attempts, costs = [], []
+        self.sim_lbl.configure(text=f"Прогоняю {n} предметов…", fg=GOLD)
+        self.update_idletasks()
+        import time as _t
+        t0 = _t.time()
+        for i in range(n):
+            (em.rarity, em.mods, em.spent, em.log, infl, em.exarch, em.eater) = (
+                start[0], [type(m)(m.entry, m.crafted, m.fractured, list(m.values), m.veiled) for m in start[1]],
+                dict(start[2]), list(start[3]), list(start[4]), start[5], start[6])
+            em.rng = _r.Random()
+            k = 0
+            try:
+                while k < limit and not all(any(not m.crafted and t.ok(m.entry) for m in em.mods) for t in targets):
+                    self._sim_once(em)
+                    k += 1
+                    if len(em.history) > 20:
+                        del em.history[:]
+            except CraftError:
+                break
+            attempts.append(k)
+            costs.append(self._spent_cost(em.spent, start[2]))
+            if _t.time() - t0 > 25:
+                break
+        # вернуть предмет как был
+        (em.rarity, em.mods, em.spent, em.log, infl, em.exarch, em.eater) = start
+        if infl != em.influences:
+            em.influences = list(infl)
+            em.pool = em._make_pool()
+        em.history, self._emu_steps = hist, steps_saved
+        em.rng.setstate(rng_state)
+        if not attempts:
+            self.sim_lbl.configure(text="Этот метод не работает на таком предмете.", fg=WARN)
+            return
+        a = sorted(attempts)
+        c = sorted(costs)
+        med = a[len(a) // 2]
+        p90 = a[min(len(a) - 1, int(len(a) * 0.9))]
+        fail = sum(1 for x in attempts if x >= limit)
+        dv = self.prices.divine
+        avg_c = sum(c) / len(c)
+        sp = lambda x: f"{x:,.0f}".replace(",", " ")
+        self.sim_lbl.configure(
+            text=(f"{len(a)} предметов: в среднем {sp(sum(a) / len(a))} попыток (медиана {sp(med)}, 90% — до {sp(p90)}) · "
+                  f"≈ {sp(avg_c)}c ({avg_c / dv:.2f} div) за предмет"
+                  + (f" · {fail} не дошли за {sp(limit)}" if fail else "")), fg=GOOD)
+        self._emu_render()
 
     STEP_TIPS = {
         "transmute": "Transmutation: обычный → магический (1–2 мода)",
@@ -807,7 +1024,7 @@ class MainWindow(tk.Toplevel):
         ir = tk.Frame(p, bg=BG1)
         ir.pack(fill="x", pady=6)
         for i, name in enumerate(inf.CONQUEROR_ORBS):
-            self._tile(ir, name, name, lambda n=name: self.emu_do("conqueror", name=n),
+            self._tile(ir, name, name, lambda n=name: self.emu_pick("conqueror", name=n),
                        tip=f"{inf.CONQUEROR_ORBS[name]}: добавляет мод влияния {name}").grid(
                 row=0, column=i, sticky="we", padx=2, pady=2)
             ir.columnconfigure(i, weight=1, uniform="cq")
@@ -825,7 +1042,7 @@ class MainWindow(tk.Toplevel):
         eb.pack(side="left", padx=6)
         lvl = lambda: {v: k for k, v in inf.ELDRITCH_TIERS.items()}[self.emu_eld_var.get()]
         for side_key, name, label in (("exarch", "Exarch", "Ember"), ("eater", "Eater", "Ichor")):
-            self._tile(er, name, label, lambda k=side_key: self.emu_do("eldritch_currency", side=k, level=lvl()),
+            self._tile(er, name, label, lambda k=side_key: self.emu_pick("eldritch_currency", side=k, level=lvl()),
                        size=24, compact=True).pack(side="left", padx=2, fill="x", expand=True)
         eg = tk.Frame(p, bg=BG1)
         eg.pack(fill="x")
@@ -833,7 +1050,7 @@ class MainWindow(tk.Toplevel):
                                                 ("Eldritch Exalt", "eldritch_exalt", "Exalt"),
                                                 ("Eldritch Annul", "eldritch_annul", "Annul"),
                                                 ("Orb of Conflict", "conflict", "Conflict"))):
-            self._tile(eg, name, label, lambda a=act: self.emu_do(a), tip=name).grid(
+            self._tile(eg, name, label, lambda a=act: self.emu_pick(a), tip=name).grid(
                 row=0, column=i, sticky="we", padx=2, pady=2)
             eg.columnconfigure(i, weight=1, uniform="eg")
 
@@ -852,10 +1069,10 @@ class MainWindow(tk.Toplevel):
         hg = tk.Frame(p, bg=BG1)
         hg.pack(fill="x")
         for i, (label, cmd) in enumerate((
-                ("Reforge", lambda: self.emu_do("harvest_reforge", label=self.emu_hv_var.get())),
-                ("+мод / −мод", lambda: self.emu_do("harvest_augment", label=self.emu_hv_var.get())),
-                ("те же моды ↑", lambda: self.emu_do("harvest_same", more=True)),
-                ("те же моды ↓", lambda: self.emu_do("harvest_same", more=False)))):
+                ("Reforge", lambda: self.emu_pick("harvest_reforge", label=self.emu_hv_var.get())),
+                ("+мод / −мод", lambda: self.emu_pick("harvest_augment", label=self.emu_hv_var.get())),
+                ("те же моды ↑", lambda: self.emu_pick("harvest_same", more=True)),
+                ("те же моды ↓", lambda: self.emu_pick("harvest_same", more=False)))):
             self._tile(hg, "Wild Crystallised Lifeforce", label, cmd, size=20, compact=True).grid(
                 row=i // 2, column=i % 2, sticky="we", padx=2, pady=2)
         hg.columnconfigure(0, weight=1, uniform="hv")
@@ -865,8 +1082,8 @@ class MainWindow(tk.Toplevel):
         self._note(p, "Veiled Chaos/Exalt дают скрытый мод, у Jun можно выбрать 1 из 3 вариантов.").pack(fill="x")
         vg = tk.Frame(p, bg=BG1)
         vg.pack(fill="x", pady=6)
-        for i, (name, label, cmd) in enumerate((("Veiled Chaos", "Veiled Chaos", lambda: self.emu_do("veiled_chaos")),
-                                                ("Veiled Exalt", "Veiled Exalt", lambda: self.emu_do("veiled_exalt")),
+        for i, (name, label, cmd) in enumerate((("Veiled Chaos", "Veiled Chaos", lambda: self.emu_pick("veiled_chaos")),
+                                                ("Veiled Exalt", "Veiled Exalt", lambda: self.emu_pick("veiled_exalt")),
                                                 ("Unveil", "Unveil (1 из 3)", self.emu_unveil))):
             self._tile(vg, name, label, cmd).grid(row=0, column=i, sticky="we", padx=2, pady=2)
             vg.columnconfigure(i, weight=1, uniform="vg")
@@ -1009,7 +1226,7 @@ class MainWindow(tk.Toplevel):
                          text=kind[:4], fg=MUTED, font=(FONT, 7), width=4, height=2)
             t.grid(row=i // 9, column=i % 9, padx=1, pady=1)
             tip = f"{e.name}: {short(e.mod.text)} · {self._price_txt(e.name)}"
-            t.bind("<Button-1>", lambda ev, x=e: self.emu_do("essence", essence=x))
+            t.bind("<Button-1>", lambda ev, x=e: self.emu_pick("essence", essence=x))
             t.bind("<Enter>", lambda ev, w=t, tp=tip: (w.configure(bg=TILE_HI, highlightbackground="#6b5124"),
                                                       self.emu_status.configure(text=tp, fg=MUTED)))
             t.bind("<Leave>", lambda ev, w=t: w.configure(bg=TILE, highlightbackground=LINE))
@@ -1065,13 +1282,13 @@ class MainWindow(tk.Toplevel):
         if not e:
             self.emu_status.configure(text="Выбери эссенцию в списке.", fg=WARN)
             return
-        self.emu_do("essence", essence=e)
+        self.emu_pick("essence", essence=e)
 
     def emu_fossils(self):
         if not self.fos_sel:
             self.emu_status.configure(text="Выбери фоссилы — клик по иконкам на вкладке «Фоссилы».", fg=WARN)
             return
-        self.emu_do("fossils", fossils=[self.fos_list[n] for n in self.fos_sel])
+        self.emu_pick("fossils", fossils=[self.fos_list[n] for n in self.fos_sel])
 
     def emu_bench(self):
         sel = self.emu_bench_lb.curselection()

@@ -109,6 +109,7 @@ class ItemCard(tk.Frame):
             self._prev = None
             return self.empty()
         self._clear()
+        self.after_idle(self._bind_click)
         border, head_bg, name_fg = RARITY.get(em.rarity, RARITY["Normal"])
         self.configure(highlightbackground=border)
         base = em.pool.base
@@ -138,7 +139,7 @@ class ItemCard(tk.Frame):
         # картинка базы + иконки влияний
         raw = self.data.base_raw.get(base.id, {})
         dds = (raw.get("visual_identity") or {}).get("dds_file", "")
-        art = st.base_art(base.id, dds, 120, 120) if st else None
+        art = st.base_art(base.id, dds, 92, 110) if st else None
         if art is not None or em.influences:
             ar = tk.Frame(self.body, bg=PANEL)
             ar.pack(fill="x")
@@ -207,6 +208,27 @@ class ItemCard(tk.Frame):
         # история, потрачено, шансы
         self._sep(border)
         self._spent(em, prices)
+
+    def _bind_click(self):
+        """Клик по любому месту предмета — применить выбранный метод (как в игре: валюта → предмет)."""
+        fn = getattr(self, "on_click", None)
+        if not fn:
+            return
+
+        def walk(w):
+            try:
+                w.bind("<Button-1>", lambda e: fn(), add="+")
+                w.configure(cursor="hand2")
+            except tk.TclError:
+                pass
+            for c in w.winfo_children():
+                walk(c)
+        for c in self.body.winfo_children():     # детей пересоздаём при каждой отрисовке — без дублей
+            walk(c)
+        if not getattr(self, "_self_bound", False):
+            for w in (self, self.body):
+                w.bind("<Button-1>", lambda e: fn())
+            self._self_bound = True
 
     @staticmethod
     def _kind_of(mid, em):

@@ -6,7 +6,7 @@ import json
 import re
 import urllib.request
 
-APP_VERSION = "0.18.0"
+APP_VERSION = "0.19.0"
 DEFAULT_REPO = ""   # например "dmitry/poe-craft-helper" — когда появится репозиторий с релизами
 
 
