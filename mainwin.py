@@ -323,6 +323,8 @@ class MainWindow(tk.Toplevel):
         self.nb.add(self.tab_ef, text="Эссенции и фоссилы")
         self.tab_emu = tk.Frame(self.nb, bg=BG)
         self.nb.add(self.tab_emu, text="Эмулятор")
+        self.tab_plan = tk.Frame(self.nb, bg=BG)
+        self.nb.add(self.tab_plan, text="Рецепты")
         self.tab_sock = tk.Frame(self.nb, bg=BG)
         self.nb.add(self.tab_sock, text="Сокеты")
 
@@ -331,6 +333,7 @@ class MainWindow(tk.Toplevel):
         self._build_calc()
         self._build_ef()
         self._build_emu()
+        self._build_plans()
         self._build_sockets()
         i18n.translate_tree(self)
 
@@ -455,6 +458,16 @@ class MainWindow(tk.Toplevel):
         self.calc_status = tk.Label(left, text="", bg=BG, fg=MUTED, font=(FONT, 8), anchor="w", justify="left",
                                     wraplength=290)
         self.calc_status.pack(fill="x", pady=(4, 10))
+        self._cap(left, "Трейд")
+        tf = tk.Frame(left, bg=BG1, highlightthickness=1, highlightbackground=LINE)
+        tf.pack(fill="x", pady=(2, 10))
+        tr = tk.Frame(tf, bg=BG1)
+        tr.pack(fill="x", padx=8, pady=6)
+        self._btn(tr, "⌕ купить базу", self.trade_base).pack(side="left")
+        self._btn(tr, "⌕ готовый предмет", self.trade_ready).pack(side="left", padx=(6, 0))
+        tk.Label(tf, text="Откроет официальный трейд в браузере: белая база этого ilvl или уже готовый "
+                          "предмет с нужными модами — сравни с ценой крафта.", bg=BG1, fg=DIM, font=(FONT, 8),
+                 wraplength=270, justify="left", anchor="w").pack(fill="x", padx=8, pady=(0, 6))
         self._cap(left, "Сохранить как крафт")
         sv = tk.Frame(left, bg=BG1, highlightthickness=1, highlightbackground=LINE)
         sv.pack(fill="x", pady=(2, 0))
@@ -780,6 +793,7 @@ class MainWindow(tk.Toplevel):
         tk.Frame(top, bg=LINE, width=1, height=22).pack(side="left", padx=10)
         self._btn(top, "↶ шаг назад", lambda: self.emu_do("undo")).pack(side="left")
         self._btn(top, "⟲ к началу", lambda: self.emu_rewind(0)).pack(side="left", padx=(4, 0))
+        self._btn(top, "⌕ такой на трейде", self.trade_emu).pack(side="left", padx=(4, 0))
         self.emu_status = tk.Label(top, text="Выбери базу сверху и нажми «Новый белый предмет».", bg=BG, fg=MUTED,
                                    font=(FONT, 9), anchor="w")
         self.emu_status.pack(side="left", padx=12, fill="x", expand=True)
@@ -1799,6 +1813,423 @@ class MainWindow(tk.Toplevel):
         self._emu_render()
 
     # ------------------------------------------------------------ сокеты
+    # ------------------------------------------------------------ рецепты (пошаговые планы)
+    def _build_plans(self):
+        """Рецепт крафта из шагов с развилками и прогон по нему N предметов — реальная цена всего пути."""
+        from poecraft import plans
+        from ui_cards import ScrollList
+        self.plan: list[dict] = []
+        f = self.tab_plan
+        left = tk.Frame(f, bg=BG, width=430)
+        left.pack(side="left", fill="y", padx=(6, 6), pady=8)
+        left.pack_propagate(False)
+        self._cap(left, "Шаблоны")
+        pr = tk.Frame(left, bg=BG1, highlightthickness=1, highlightbackground=LINE)
+        pr.pack(fill="x", pady=(2, 8))
+        self.plan_presets = tk.Frame(pr, bg=BG1)
+        self.plan_presets.pack(fill="x", padx=4, pady=4)
+        for i, name in enumerate(plans.presets(2)):
+            b = self._btn(self.plan_presets, name, lambda n=name: self.plan_preset(n))
+            b.grid(row=i // 2, column=i % 2, sticky="w")
+        self._cap(left, "Шаги рецепта")
+        lf = tk.Frame(left, bg=BG1, highlightthickness=1, highlightbackground=LINE)
+        lf.pack(fill="x", pady=(2, 4))
+        self.plan_lb = tk.Listbox(lf, bg=BG1, fg=FG, selectbackground="#3a2c17", selectforeground=GOLD,
+                                  relief="flat", highlightthickness=0, font=(FONT, 9), height=9, activestyle="none")
+        self.plan_lb.pack(fill="x", padx=4, pady=4)
+        self.plan_lb.bind("<<ListboxSelect>>", lambda e: self._plan_load_step())
+        br = tk.Frame(left, bg=BG)
+        br.pack(fill="x", pady=(0, 8))
+        for text, cmd in (("+ добавить", self.plan_add), ("✎ заменить", self.plan_update), ("× удалить", self.plan_del),
+                          ("▲", lambda: self.plan_move(-1)), ("▼", lambda: self.plan_move(1)),
+                          ("очистить", self.plan_clear)):
+            self._btn(br, text, cmd).pack(side="left")
+
+        self._cap(left, "Шаг")
+        ed = tk.Frame(left, bg=BG1, highlightthickness=1, highlightbackground=LINE)
+        ed.pack(fill="x", pady=(2, 8))
+        ed.columnconfigure(1, weight=1)
+
+        def row(r, label):
+            tk.Label(ed, text=label, bg=BG1, fg=MUTED, font=(FONT, 9), anchor="w").grid(
+                row=r, column=0, sticky="w", padx=(8, 6), pady=3)
+
+        def combo(r, var, values, width=30):
+            cb = ttk.Combobox(ed, textvariable=var, values=values, state="readonly", style="D.TCombobox", width=width)
+            cb.grid(row=r, column=1, sticky="we", padx=(0, 8), pady=3)
+            popdown_on_top(cb)
+            return cb
+
+        self._plan_act_labels = [l for _, l, _ in plans.ACTIONS]
+        self._plan_cond_labels = [l for l, _ in plans.CONDITIONS]
+        self.pl_if = tk.StringVar(value="—")
+        self.pl_act = tk.StringVar(value=self._plan_act_labels[0])
+        self.pl_par = tk.StringVar()
+        self.pl_until = tk.StringVar(value="—")
+        self.pl_max = tk.StringVar(value="300")
+        self.pl_else = tk.StringVar(value="дальше")
+        row(0, "если")
+        combo(0, self.pl_if, self._plan_cond_labels)
+        row(1, "сделать")
+        cb = combo(1, self.pl_act, self._plan_act_labels)
+        cb.bind("<<ComboboxSelected>>", lambda e: self._plan_param_values())
+        row(2, "параметр")
+        self.pl_par_box = combo(2, self.pl_par, [])
+        self.pl_par_box.bind("<<ComboboxSelected>>", lambda e: self._plan_param_pick())
+        self.pl_fos: list[str] = []
+        self.pl_fos_lbl = tk.Label(ed, text="", bg=BG1, fg=GOLD, font=(FONT, 8), anchor="w", wraplength=300,
+                                   justify="left")
+        self.pl_fos_lbl.grid(row=3, column=1, sticky="we", padx=(0, 8))
+        row(4, "повторять, пока")
+        combo(4, self.pl_until, self._plan_cond_labels)
+        row(5, "не больше раз")
+        self._entry(ed, self.pl_max, 8).grid(row=5, column=1, sticky="w", padx=(0, 8), pady=3)
+        row(6, "иначе")
+        self.pl_else_box = combo(6, self.pl_else, ["дальше", "стоп"])
+        tk.Label(ed, text="«если» — шаг выполняется только при условии; «повторять, пока» — кидать, пока условие "
+                          "не выполнится. Не вышло → «иначе»: дальше, стоп (неудача) или вернуться к шагу.",
+                 bg=BG1, fg=DIM, font=(FONT, 8), wraplength=400, justify="left", anchor="w").grid(
+            row=7, column=0, columnspan=2, sticky="we", padx=8, pady=(2, 6))
+        self._plan_param_values()
+
+        right = tk.Frame(f, bg=BG)
+        right.pack(side="left", fill="both", expand=True, padx=(0, 6), pady=8)
+        self._cap(right, "Прогон рецепта")
+        rr = tk.Frame(right, bg=BG1, highlightthickness=1, highlightbackground=LINE)
+        rr.pack(fill="x", pady=(2, 6))
+        tk.Label(rr, text="предметов:", bg=BG1, fg=MUTED, font=(FONT, 9)).pack(side="left", padx=(8, 4), pady=6)
+        self.pl_n = tk.StringVar(value="1000")
+        self._entry(rr, self.pl_n, 7).pack(side="left")
+        self._act(rr, "▦ Прогнать", self.plan_run).pack(side="left", padx=8, pady=6)
+        self._btn(rr, "▶ один раз в эмуляторе", self.plan_once).pack(side="left")
+        self.pl_status = tk.Label(right, text="", bg=BG, fg=MUTED, font=(FONT, 8), anchor="w", justify="left")
+        self.pl_status.pack(fill="x")
+        self.pl_out = ScrollList(right)
+        self.pl_out.pack(fill="both", expand=True, pady=(4, 0))
+        self.pl_out.message("Собери рецепт из шагов слева или возьми шаблон. Цели — моды, отмеченные в «Пуле модов». "
+                            "Прогон стартует с предмета в эмуляторе (или с белой базы) и повторяет весь путь много "
+                            "раз: видно шанс успеха, среднюю цену и сколько раз срабатывает каждый шаг.\n\n"
+                            "Рецепт сохраняется вместе с крафтом («Калькулятор» → «Сохранить как крафт»).")
+        self._plan_refresh()
+
+    def _plan_param_values(self):
+        from poecraft import plans
+        a = self._plan_action()
+        p = plans.ACTION_PARAM.get(a)
+        vals: list[str] = []
+        self._plan_bench_map = {}
+        if p == "essence" and self.pool:
+            vals = sorted(e.name for e in cc.essences_for(self.data, self.pool.base.item_class))
+        elif p == "fossils":
+            vals = sorted(self.fos_list)
+        elif p == "bench":
+            meta = {"prefix_lock": "Префиксы нельзя менять", "suffix_lock": "Суффиксы нельзя менять",
+                    "no_attack": "Нельзя моды атаки", "no_caster": "Нельзя моды заклинаний",
+                    "multi_craft": "До 3 крафтов"}
+            self._plan_bench_map = {v: ("meta", k) for k, v in meta.items()}
+            em = self._plan_em(fresh=True)
+            if em:
+                for o in em.bench_options():
+                    if em._meta_of(o):
+                        continue
+                    t = short(o["mod"].text)
+                    self._plan_bench_map.setdefault(t, ("bench", o["mod"].id))
+            vals = list(self._plan_bench_map)
+        elif p == "conqueror":
+            vals = list(inf.CONQUEROR_ORBS)
+        elif p == "harvest":
+            from poecraft.harvest import HARVEST
+            vals = list(HARVEST)
+        self.pl_par_box.configure(values=vals, state="readonly" if vals else "disabled")
+        if self.pl_par.get() not in vals:
+            self.pl_par.set(vals[0] if vals and p != "fossils" else "")
+        if p != "fossils":
+            self.pl_fos = []
+        self._plan_fos_paint()
+
+    def _plan_param_pick(self):
+        from poecraft import plans
+        if plans.ACTION_PARAM.get(self._plan_action()) == "fossils":
+            n = self.pl_par.get()
+            if n and n not in self.pl_fos and len(self.pl_fos) < 4:
+                self.pl_fos.append(n)
+            self.pl_par.set("")
+            self._plan_fos_paint()
+
+    def _plan_fos_paint(self):
+        if self.pl_fos:
+            self.pl_fos_lbl.configure(text="фоссилы: " + " + ".join(x.replace(" Fossil", "") for x in self.pl_fos)
+                                           + "   (выбери ещё, до 4; «очистить» в списке шагов — сброс)")
+        else:
+            self.pl_fos_lbl.configure(text="")
+
+    def _plan_action(self):
+        from poecraft import plans
+        lab = self.pl_act.get()
+        return next((a for a, l, _ in plans.ACTIONS if l == lab), "chaos")
+
+    def _plan_cond(self, label):
+        from poecraft import plans
+        return dict(plans.CONDITIONS)[label] if label in dict(plans.CONDITIONS) else None
+
+    def _plan_step_from_editor(self):
+        from poecraft import plans
+        a = self._plan_action()
+        p = plans.ACTION_PARAM.get(a)
+        s: dict = {"do": a}
+        kw: dict = {}
+        par = self.pl_par.get()
+        if p == "essence":
+            if not par:
+                raise ValueError("Выбери эссенцию.")
+            kw["essence"] = par
+        elif p == "fossils":
+            if not self.pl_fos:
+                raise ValueError("Выбери хотя бы один фоссил.")
+            kw["fossils"] = list(self.pl_fos)
+        elif p == "bench":
+            if par not in self._plan_bench_map:
+                raise ValueError("Выбери крафт верстака.")
+            k, v = self._plan_bench_map[par]
+            kw[k] = v
+            if k == "bench":
+                kw["bench_text"] = par
+        elif p == "conqueror":
+            kw["name"] = par
+        elif p == "harvest":
+            kw["label"] = par
+        if kw:
+            s["kw"] = kw
+        c_if, c_until = self._plan_cond(self.pl_if.get()), self._plan_cond(self.pl_until.get())
+        if c_if:
+            s["if"] = c_if
+        if c_until:
+            s["until"] = c_until
+            try:
+                s["max"] = max(1, min(100000, int(self.pl_max.get())))
+            except ValueError:
+                s["max"] = 300
+        if c_if or c_until:
+            e = self.pl_else.get()
+            s["else"] = "next" if e == "дальше" else "stop" if e == "стоп" else int(e.split()[-1]) - 1
+        return s
+
+    def _plan_refresh(self, sel=None):
+        from poecraft import plans
+        self.plan_lb.delete(0, "end")
+        for i, s in enumerate(self.plan):
+            self.plan_lb.insert("end", f"{i + 1}. {plans.step_text(s)}")
+        if sel is not None and 0 <= sel < len(self.plan):
+            self.plan_lb.selection_set(sel)
+            self.plan_lb.see(sel)
+        self.pl_else_box.configure(values=["дальше", "стоп"] + [f"к шагу {i + 1}" for i in range(len(self.plan))])
+
+    def _plan_sel(self):
+        s = self.plan_lb.curselection()
+        return s[0] if s else None
+
+    def _plan_load_step(self):
+        from poecraft import plans
+        i = self._plan_sel()
+        if i is None:
+            return
+        s = self.plan[i]
+        self.pl_act.set(plans.ACTION_LABEL.get(s["do"], s["do"]))
+        self._plan_param_values()
+        kw = s.get("kw") or {}
+        if kw.get("essence"):
+            self.pl_par.set(kw["essence"])
+        elif kw.get("fossils"):
+            self.pl_fos = list(kw["fossils"])
+            self._plan_fos_paint()
+        elif kw.get("meta"):
+            self.pl_par.set(next((k for k, v in self._plan_bench_map.items() if v == ("meta", kw["meta"])), ""))
+        elif kw.get("bench_text"):
+            self.pl_par.set(kw["bench_text"])
+        elif kw.get("name") or kw.get("label"):
+            self.pl_par.set(kw.get("name") or kw.get("label"))
+        self.pl_if.set(plans.cond_label(s.get("if")))
+        self.pl_until.set(plans.cond_label(s.get("until")))
+        self.pl_max.set(str(s.get("max", 300)))
+        e = s.get("else", "next")
+        self.pl_else.set("дальше" if e == "next" else "стоп" if e == "stop" else f"к шагу {int(e) + 1}")
+
+    def plan_add(self):
+        try:
+            s = self._plan_step_from_editor()
+        except ValueError as e:
+            self.pl_status.configure(text=str(e), fg=WARN)
+            return
+        i = self._plan_sel()
+        pos = len(self.plan) if i is None else i + 1
+        self.plan.insert(pos, s)
+        self._plan_refresh(pos)
+        self.pl_status.configure(text="", fg=MUTED)
+
+    def plan_update(self):
+        i = self._plan_sel()
+        if i is None:
+            return self.plan_add()
+        try:
+            self.plan[i] = self._plan_step_from_editor()
+        except ValueError as e:
+            self.pl_status.configure(text=str(e), fg=WARN)
+            return
+        self._plan_refresh(i)
+
+    def plan_del(self):
+        i = self._plan_sel()
+        if i is not None:
+            del self.plan[i]
+            self._plan_refresh(min(i, len(self.plan) - 1))
+
+    def plan_move(self, d):
+        i = self._plan_sel()
+        if i is None or not 0 <= i + d < len(self.plan):
+            return
+        self.plan[i], self.plan[i + d] = self.plan[i + d], self.plan[i]
+        self._plan_refresh(i + d)
+
+    def plan_clear(self):
+        self.plan = []
+        self.pl_fos = []
+        self._plan_fos_paint()
+        self._plan_refresh()
+
+    def plan_preset(self, name):
+        from poecraft import plans
+        steps = [dict(x) for x in plans.presets(max(1, len(self._targets())))[name]]
+        ess = None
+        if self.pool:
+            if self.ef_ess and self.ef_ess in self.ess_list:
+                ess = self.ess_list[self.ef_ess].name
+        for s in steps:
+            kw = s.get("kw")
+            if kw is not None:
+                kw = s["kw"] = dict(kw)
+                if "essence" in kw and not kw["essence"] and ess:
+                    kw["essence"] = ess
+                if "fossils" in kw and not kw["fossils"] and getattr(self, "fos_sel", None):
+                    kw["fossils"] = list(self.fos_sel)
+        self.plan = steps
+        self._plan_refresh()
+        miss = [i + 1 for i, s in enumerate(steps) if (s.get("kw") or {}).get("essence") == ""
+                or (s.get("kw") or {}).get("fossils") == []]
+        self.pl_status.configure(
+            text=(f"Шаблон «{name}». Выбери параметр в шаге {', '.join(map(str, miss))} (выдели шаг → параметр → "
+                  "«заменить»)." if miss else f"Шаблон «{name}» — можно прогнать."), fg=WARN if miss else MUTED)
+
+    def _plan_em(self, fresh=False):
+        """Копия предмета из эмулятора (или новая белая база) — рецепт не трогает сам эмулятор."""
+        if not self.pool:
+            return None
+        src = self.emu if (self.emu and not fresh) else None
+        if src:
+            em = Emulator(self.data, src.pool, influences=list(src.influences))
+            em.blocked = set(src.blocked)
+            em.restore(src.snapshot(), copy=True)
+        else:
+            infl = [self.inf_var.get()] if self.inf_var.get() in getattr(self, "inf_map", {}) else []
+            em = Emulator(self.data, self.base_pool, influences=infl)
+            em.blocked = set(getattr(self, "blocked", set()))
+        em.spent = {}
+        return em
+
+    def _plan_check(self):
+        if not self.pool:
+            self.pl_status.configure(text="Сначала выбери базу сверху.", fg=WARN)
+            return None
+        if not self.plan:
+            self.pl_status.configure(text="В рецепте нет шагов.", fg=WARN)
+            return None
+        targets = self._targets()
+        if not targets:
+            self.pl_status.configure(text="Отметь нужные моды во вкладке «Пул модов».", fg=WARN)
+            return None
+        return targets
+
+    def plan_run(self):
+        from poecraft import plans
+        targets = self._plan_check()
+        if targets is None or getattr(self, "_plan_busy", False):
+            return
+        try:
+            n = max(1, min(100000, int(self.pl_n.get())))
+        except ValueError:
+            n = 1000
+        em = self._plan_em()
+        steps = [dict(s) for s in self.plan]
+        self._plan_busy = True
+        self.pl_status.configure(text=f"Прогоняю {n:,} предметов…".replace(",", " "), fg=GOLD)
+        prog = {"i": 0}
+
+        def work():
+            try:
+                r = plans.simulate(self.data, em, targets, steps, n, self.prices, time_budget=25.0,
+                                   progress=lambda i, t: prog.__setitem__("i", i))
+            except Exception as e:  # noqa: BLE001
+                r = {"error": str(e)}
+            self.after(0, lambda: self._plan_done(r, steps))
+
+        def tick():
+            if self._plan_busy:
+                self.pl_status.configure(text=f"Прогоняю… {prog['i']:,} / {n:,}".replace(",", " "), fg=GOLD)
+                self.after(300, tick)
+
+        threading.Thread(target=work, daemon=True).start()
+        tick()
+
+    def _plan_done(self, r, steps):
+        from poecraft import plans
+        from ui_cards import result_card
+        self._plan_busy = False
+        self.pl_out.clear()
+        if r.get("error"):
+            self.pl_status.configure(text=f"Ошибка: {r['error']}", fg=WARN)
+            return
+        dv = self.prices.divine or 1
+        sp = lambda x: f"{x:,.0f}".replace(",", " ")
+        cps = r["cost_per_success"]
+        self.pl_status.configure(text=f"Готово: {sp(r['items'])} предметов"
+                                      + (" (упёрлись во время)" if r["items"] < int(self.pl_n.get() or 0) else ""),
+                                 fg=GOOD if r["ok"] else WARN)
+        result_card(self.pl_out.inner, title="Рецепт: " + (self.goal_name.get().strip() or f"{len(steps)} шагов"),
+                    best=cps is not None,
+                    cost=(f"{sp(cps)}c · {cps / dv:.2f} div" if cps is not None else "нет успехов"),
+                    cost_bad=cps is None,
+                    desc=f"в среднем на попытку ≈ {sp(r['avg_cost'])}c · {r['avg_ops']:.0f} действий",
+                    chance=r["rate"], chance_text=f"успех {r['rate'] * 100:.1f}% · {sp(r['ok'])} из {sp(r['items'])}",
+                    note="" if cps is not None else "рецепт ни разу не довёл предмет до цели — проверь шаги")
+        box = tk.Frame(self.pl_out.inner, bg=BG1, highlightthickness=1, highlightbackground=LINE)
+        box.pack(fill="x", padx=4, pady=6)
+        tk.Label(box, text="СКОЛЬКО РАЗ СРАБАТЫВАЕТ ШАГ (в среднем на предмет)", bg=BG1, fg=GOLD,
+                 font=(FONT, 8, "bold"), anchor="w").pack(fill="x", padx=8, pady=(6, 2))
+        for i, (s, k) in enumerate(zip(steps, r["per_step"])):
+            tk.Label(box, text=f"{i + 1}. {plans.step_text(s)}", bg=BG1, fg=FG, font=(FONT, 9), anchor="w",
+                     wraplength=520, justify="left").pack(fill="x", padx=8)
+            tk.Label(box, text=f"    × {k:.1f}", bg=BG1, fg=MUTED, font=(FONT, 8), anchor="w").pack(fill="x", padx=8)
+        tk.Frame(box, bg=BG1, height=6).pack()
+        for e in r.get("errors") or []:
+            tk.Label(self.pl_out.inner, text="⚠ " + e, bg=BG, fg=WARN, font=(FONT, 9), anchor="w").pack(fill="x", padx=6)
+        self.pl_out.finish()
+
+    def plan_once(self):
+        """Один проход рецепта прямо в эмуляторе — с журналом, можно отмотать."""
+        from poecraft import plans
+        targets = self._plan_check()
+        if targets is None:
+            return
+        if not self.emu:
+            self.emu_new()
+        if not self.emu:
+            return
+        r = plans.PlanRunner(self.data, self.emu, targets, trim_history=False).run([dict(s) for s in self.plan])
+        self.emu_card._prev = None
+        self._emu_render()
+        self.nb.select(self.tab_emu)
+        msg = "Рецепт дошёл до цели ✓" if r["ok"] else (r["error"] or "Рецепт не дошёл до цели")
+        self.emu_status.configure(text=f"{msg} · {r['ops']} действий", fg=GOOD if r["ok"] else WARN)
+
     def _build_sockets(self):
         """Сокеты: слева предмет и что нужно, справа карточки способов (Chromatic и рецепты верстака)."""
         from ui_cards import ScrollList
@@ -2329,6 +2760,71 @@ class MainWindow(tk.Toplevel):
         st = self.calc_status if target == "out" else self.ef_status
         st.configure(text=f"цены: {self.prices.league}, {self.prices.source}", fg=MUTED)
 
+    # ------------------------------------------------------------ трейд
+    def _trade_lang(self):
+        lang = self.settings.get("game_lang", "auto")
+        if lang == "auto":
+            lang = "ru" if i18n.lang() == "ru" else "en"
+        return lang
+
+    def _open_trade(self, query, note=""):
+        import webbrowser
+        from poecraft import trade
+        url = trade.search_url(self.prices.league or "Standard", query, self._trade_lang())
+        webbrowser.open(url)
+        self.status.configure(text="Открыл трейд в браузере." + (" " + note if note else ""), fg=WARN if note else MUTED)
+
+    def trade_base(self):
+        if not self.pool:
+            return self.status.configure(text="Сначала выбери базу.", fg=WARN)
+        from poecraft import trade
+        infl = self.inf_var.get() if self.inf_var.get() in getattr(self, "inf_map", {}) else None
+        self._open_trade(trade.base_query(self.pool.base.name, self.pool.ilvl, infl))
+
+    def _trade_mods(self, mods, base_name, ilvl):
+        """Словарь статов трейда качаем один раз в фоне, потом открываем ссылку."""
+        from poecraft import trade
+
+        def work():
+            st = trade.load_stats()
+            self.after(0, lambda: done(st))
+
+        def done(st):
+            if not st:
+                self._open_trade(trade.base_query(base_name, ilvl),
+                                 "Не удалось загрузить список модов трейда — открыл поиск только базы.")
+                return
+            q, miss = trade.mods_query(base_name, mods, st, ilvl)
+            self._open_trade(q, ("Не нашёл на трейде: " + "; ".join(miss) + " — добавь вручную.") if miss else "")
+        self.status.configure(text="Готовлю поиск на трейде…", fg=MUTED)
+        threading.Thread(target=work, daemon=True).start()
+
+    def trade_ready(self):
+        """Готовый предмет: по каждому нужному моду — худший допустимый тир как минимум."""
+        if not self.pool or not self.selected:
+            return self.status.configure(text="Отметь нужные моды в «Пуле модов».", fg=WARN)
+        from poecraft import trade
+        mods = []
+        for (kind, typ), v in self.selected.items():
+            tiers = sorted((e for e in self.pool.all if e.mod.kind == kind and e.mod.type == typ and e.tier <= v["max_tier"]),
+                           key=lambda e: -e.tier)
+            if tiers:
+                mods.append((tiers[0].mod.text, trade.min_value(tiers[0].mod.text)))
+        self._trade_mods(mods, self.pool.base.name, None)
+
+    def trade_emu(self):
+        """Такой же предмет, как в эмуляторе: моды не хуже 90% от текущих значений."""
+        if not self.emu or not self.emu.mods:
+            return self.emu_status.configure(text="В эмуляторе нет модов.", fg=WARN)
+        mods = []
+        for m in self.emu.mods:
+            if m.crafted or m.veiled:
+                continue
+            v = m.values[0] if m.values else None
+            lo = None if v is None else (int(v * 0.9) if float(v).is_integer() else round(v * 0.9, 1))
+            mods.append((m.mod.text, lo))
+        self._trade_mods(mods, self.emu.pool.base.name, None)
+
     def save_goal(self):
         name = self.goal_name.get().strip()
         if not self.pool or not self.selected:
@@ -2341,6 +2837,8 @@ class MainWindow(tk.Toplevel):
                "min_ilvl": self.pool.ilvl,
                "wanted": [{"label": v["label"], "mod_type": k[1], "kind": k[0], "max_tier": v["max_tier"]}
                           for k, v in self.selected.items()]}
+        if getattr(self, "plan", None):
+            rec["plan"] = [dict(x) for x in self.plan]
         try:
             path = recipes.save(rec, APP_DIR / "goals")
             code = recipes.encode(rec)

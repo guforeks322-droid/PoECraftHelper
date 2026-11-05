@@ -31,6 +31,7 @@ jobs:
         run: >
           pyinstaller --onefile --windowed --name PoECraftHelper
           --hidden-import editor --hidden-import mainwin --hidden-import settings_win --hidden-import hub --hidden-import itemcard --hidden-import ui_cards --hidden-import PIL.ImageTk
+          --icon assets/icon.ico --add-data "assets;assets"
           --add-data "poecraft/ui;poecraft/ui" -y overlay.py
 
       - name: Проверка запуска exe (импорт и данные)
@@ -53,15 +54,29 @@ jobs:
           Copy-Item "docs/Как пользоваться.txt" $r/
           Compress-Archive -Path $r -DestinationPath "PoECraftHelper-${{ github.ref_name }}-win64.zip"
 
+      - name: Установщик (Inno Setup)
+        continue-on-error: true      # если установщик не собрался, архив всё равно попадёт в релиз
+        shell: pwsh
+        run: |
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) { choco install innosetup -y --no-progress }
+          $v = "${{ github.ref_name }}".TrimStart("v")
+          if ($v -notmatch '^\d') { $v = "0.0.0-dev" }
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyVer=$v" installer.iss
+
       - uses: actions/upload-artifact@v4
         with:
           name: PoECraftHelper-win64
-          path: PoECraftHelper-*-win64.zip
+          path: |
+            PoECraftHelper-*-win64.zip
+            PoECraftHelper-Setup-*.exe
 
       - name: Релиз
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: PoECraftHelper-*-win64.zip
+          fail_on_unmatched_files: false
+          files: |
+            PoECraftHelper-*-win64.zip
+            PoECraftHelper-Setup-*.exe
           body_path: docs/release-notes.md
           generate_release_notes: true
