@@ -53,7 +53,7 @@ EN = {
         "Pick an essence OR up to 4 fossils, then «Calculate» — for wanted mods from «Mod pool».",
     # эмулятор
     "Новый белый предмет": "New white item", "↶ отменить": "↶ undo", "Валюта": "Currency",
-    "применить": "apply", "Верстак": "Crafting bench", "скрафтить": "craft",
+    "применить": "apply", "Верстак": "Bench", "скрафтить": "craft",
     "снять крафты верстака": "remove bench crafts", "Влияние · Eldritch": "Influence · Eldritch",
     "Exalt завоевателя": "Conqueror exalt", "Ember (Exarch)": "Ember (Exarch)", "Ichor (Eater)": "Ichor (Eater)",
     "+мод/−мод": "+mod/−mod", "тех же модов ↑": "same mods ↑", "тех же модов ↓": "same mods ↓",

@@ -191,7 +191,7 @@ class MainWindow(tk.Toplevel):
     def _tile(self, parent, icon, label, cmd, size=32, compact=False, tip=""):
         """Кнопка-плитка как на Craft of Exile: иконка валюты и подпись. Без иконки — только текст."""
         t = tk.Label(parent, text=label, bg=TILE, fg=FG, cursor="hand2", font=(FONT, 8),
-                     compound="left" if compact else "top", padx=4, pady=3 if compact else 4,
+                     compound="left" if compact else "top", padx=4 if compact else 1, pady=3 if compact else 4,
                      highlightthickness=1, highlightbackground=LINE)
         t.bind("<Button-1>", lambda e: cmd())
         t.bind("<Enter>", lambda e: (t.configure(bg=TILE_HI, fg=GOLD, highlightbackground="#6b5124"),
@@ -343,7 +343,7 @@ class MainWindow(tk.Toplevel):
         i18n.translate_tree(self)
 
         foot = tk.Frame(self, bg=BG)
-        foot.pack(fill="x")
+        foot.pack(side="bottom", fill="x", before=self.nb)   # строка статуса не обрезается снизу
         self.status = tk.Label(foot, text="Выбери базу предмета.", bg=BG, fg=MUTED, font=(FONT, 8), anchor="w")
         self.status.pack(side="left", fill="x", expand=True, padx=10, pady=3)
         grip = tk.Label(foot, text="◢", bg=BG, fg=MUTED, cursor="size_nw_se" if sys.platform == "win32" else "bottom_right_corner", font=(FONT, 10))
@@ -785,9 +785,9 @@ class MainWindow(tk.Toplevel):
         f = self.tab_emu
         self.emu: Emulator | None = None
         self._emu_steps: list = []
-        f.columnconfigure(0, weight=0, minsize=440)
+        f.columnconfigure(0, weight=0, minsize=420)
         f.columnconfigure(1, weight=1)
-        f.columnconfigure(2, weight=0, minsize=330)
+        f.columnconfigure(2, weight=0, minsize=300)
         f.rowconfigure(1, weight=1)
 
         # ---- панель инструментов
@@ -902,7 +902,7 @@ class MainWindow(tk.Toplevel):
         self.sel_icon = tk.Label(r1, bg=BG1)
         self.sel_icon.pack(side="left", padx=(8, 4))
         self.sel_lbl = tk.Label(r1, text="не выбран — кликни по валюте справа", bg=BG1, fg=MUTED, font=(FONT, 10),
-                                anchor="w")
+                                anchor="w", justify="left", wraplength=250)
         self.sel_lbl.pack(side="left", fill="x", expand=True)
         self.apply_btn = self._act(r1, "Применить", self.emu_apply_selected)
         self.apply_btn.pack(side="right")
@@ -914,14 +914,16 @@ class MainWindow(tk.Toplevel):
         self.sim_n = tk.StringVar(value="100")
         self._entry(r2, self.sim_n, 5).pack(side="left")
         self._btn(r2, "▦ Прогнать", self.emu_sim_fixed).pack(side="left", padx=(4, 0))
+        r3 = tk.Frame(bar, bg=BG1)          # галочки отдельной строкой — иначе плашка шире колонки
+        r3.pack(fill="x", padx=8, pady=(0, 4))
         self.lock_var = tk.BooleanVar(value=False)
-        lk = tk.Checkbutton(r2, text="Hinekora", variable=self.lock_var, bg=BG1, fg=MUTED, selectcolor=BG2,
+        lk = tk.Checkbutton(r3, text="Hinekora", variable=self.lock_var, bg=BG1, fg=MUTED, selectcolor=BG2,
                             activebackground=BG1, activeforeground=GOLD, font=(FONT, 8), bd=0, highlightthickness=0)
-        lk.pack(side="right", padx=(6, 0))
         self.aug_var = tk.BooleanVar(value=True)
-        tk.Checkbutton(r2, text="+Aug", variable=self.aug_var, bg=BG1, fg=MUTED, selectcolor=BG2,
+        tk.Checkbutton(r3, text="+Aug", variable=self.aug_var, bg=BG1, fg=MUTED, selectcolor=BG2,
                        activebackground=BG1, activeforeground=GOLD, font=(FONT, 8), bd=0,
-                       highlightthickness=0).pack(side="right")
+                       highlightthickness=0).pack(side="left")
+        lk.pack(side="left", padx=(10, 0))
         self.sim_lbl = tk.Label(bar, text="Клик по предмету или «Применить» — кинуть выбранное. "
                                           "Двойной клик по валюте — кинуть сразу.", bg=BG1, fg=DIM,
                                 font=(FONT, 8), anchor="w", justify="left", wraplength=410)
