@@ -13,6 +13,7 @@ from .data import GameData, ModDef
 from .pool import ModPool, PoolEntry
 from .prices import Prices
 from . import currency_craft as cc
+from .pool import yield_ui
 
 WILD, VIVID, PRIMAL, SACRED = ("Wild Crystallised Lifeforce", "Vivid Crystallised Lifeforce",
                                "Primal Crystallised Lifeforce", "Sacred Crystallised Lifeforce")
@@ -77,6 +78,8 @@ def method_harvest(pool: ModPool, targets: list[Target], label: str, prices: Pri
     while trials < 120_000 and (hits < 300 or trials < 10_000):
         for _ in range(2000):
             trials += 1
+            if not trials % 2000:
+                yield_ui()
             first = tagged[bisect.bisect_right(cum, rng.random() * cum[-1])]
             r = rollers.get(first.mod.id)
             if r is None:
