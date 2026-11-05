@@ -715,6 +715,25 @@ class MainWindow(tk.Toplevel):
             vg.columnconfigure(i, weight=1, uniform="vg")
         self.emu_unveil_frame = tk.Frame(side2, bg=BG)
         self.emu_unveil_frame.pack(fill="x", pady=(4, 0))
+
+        # журнал: что каждое действие добавило / убрало / изменило
+        jh = tk.Frame(side2, bg=BG)
+        jh.pack(fill="x", pady=(10, 0))
+        tk.Label(jh, text="Журнал крафта", bg=BG, fg=GOLD, font=(FONT, 10, "bold"), anchor="w").pack(side="left")
+        tk.Label(jh, text="клик по шагу — откат", bg=BG, fg=MUTED, font=(FONT, 8)).pack(side="right")
+        jf = tk.Frame(side2, bg=BG1, highlightthickness=1, highlightbackground=LINE)
+        jf.pack(fill="both", expand=True, pady=(2, 0))
+        self.emu_journal = tk.Text(jf, bg=BG1, fg=FG, relief="flat", wrap="word", font=(FONT, 9), width=34,
+                                   height=8, padx=6, pady=4, cursor="arrow", highlightthickness=0)
+        jsb = ttk.Scrollbar(jf, orient="vertical", command=self.emu_journal.yview, style="D.Vertical.TScrollbar")
+        self.emu_journal.configure(yscrollcommand=jsb.set)
+        jsb.pack(side="right", fill="y")
+        self.emu_journal.pack(side="left", fill="both", expand=True)
+        for tag, kw in (("step", dict(foreground=GOLD, font=(FONT, 9, "bold"))), ("add", dict(foreground=GOOD)),
+                        ("del", dict(foreground=WARN, overstrike=True)), ("chg", dict(foreground="#e8c860")),
+                        ("m", dict(foreground=MUTED, font=(FONT, 8))), ("cur", dict(background="#2a2116"))):
+            self.emu_journal.tag_configure(tag, **kw)
+        self.emu_journal.configure(state="disabled")
         self.emu_spent = tk.Label(side, text="", bg=BG, fg=FG, font=(FONT, 9), anchor="w", justify="left",
                                   wraplength=320)
         # потраченное теперь выводится в карточке предмета
@@ -842,8 +861,10 @@ class MainWindow(tk.Toplevel):
                 if self._emu_steps:
                     self._emu_steps.pop()
             else:
+                before = self._emu_state()
                 self.emu.apply(action, **kw)
-                self._emu_steps.append(self._step_of(action, kw))
+                icon, label = self._step_of(action, kw)
+                self._emu_steps.append((icon, label, self._emu_diff(before, self._emu_state())))
             self.emu_status.configure(text=self.emu.log[-1] if self.emu.log else "", fg=MUTED)
         except CraftError as e:
             self.emu_status.configure(text=str(e), fg=WARN)
@@ -897,10 +918,12 @@ class MainWindow(tk.Toplevel):
         self.emu_fos_lbl.configure(text=", ".join(n.replace(" Fossil", "") for n in self.fos_sel) or "не выбраны")
         if not em:
             self.emu_card.render(None)
+            self._emu_journal_render()
             return
         targets = self._targets()
         ch = em.chances(targets) if targets else None
         self.emu_card.render(em, targets, self.prices, self._emu_steps, ch)
+        self._emu_journal_render()
 
     STEP_ICONS = {
         "transmute": ("Orb of Transmutation", "Transmutation"), "alteration": ("Orb of Alteration", "Alteration"),
@@ -934,6 +957,74 @@ class MainWindow(tk.Toplevel):
         if kw.get("label"):
             label += f" ({kw['label']})"
         return icon, label
+
+    def _emu_state(self) -> dict:
+        em = self.emu
+        mods = {}
+        for m in em.mods:
+            tier = "крафт" if m.crafted else ("скрыт" if m.veiled else f"T{m.entry.tier}")
+            mods.setdefault(m.mod.id, []).append((m.text, tier, m.kind))
+        impl = {s: getattr(em, s).text for s in ("exarch", "eater") if getattr(em, s)}
+        return {"rarity": em.rarity, "mods": mods, "impl": impl, "infl": list(em.influences)}
+
+    @staticmethod
+    def _emu_diff(a: dict, b: dict) -> list[tuple[str, str]]:
+        """[(вид, текст)]: вид = add / del / chg / m (редкость, влияние, имплициты)."""
+        names = {"Normal": "обычный", "Magic": "магический", "Rare": "редкий"}
+        out = []
+        if a["rarity"] != b["rarity"]:
+            out.append(("m", f"{names.get(a['rarity'], a['rarity'])} → {names.get(b['rarity'], b['rarity'])}"))
+        for i in b["infl"]:
+            if i not in a["infl"]:
+                out.append(("add", f"влияние {i}"))
+        for side, ttl in (("exarch", "Exarch"), ("eater", "Eater")):
+            x, y = a["impl"].get(side), b["impl"].get(side)
+            if x != y:
+                out.append(("chg" if x and y else ("add" if y else "del"),
+                            f"{ttl}: {x} → {y}" if x and y else f"{ttl}: {y or x}"))
+        for mid in list(a["mods"]) + [k for k in b["mods"] if k not in a["mods"]]:
+            old, new = a["mods"].get(mid, []), b["mods"].get(mid, [])
+            if old == new:
+                continue
+            if old and new and len(old) == len(new):
+                for o, n in zip(old, new):
+                    if o != n:
+                        out.append(("chg", f"{n[1]}  {o[0]} → {n[0]}"))
+                continue
+            for o in old[len(new):] if len(old) > len(new) else []:
+                out.append(("del", f"{o[1]}  {o[0]}"))
+            for n in new[len(old):] if len(new) > len(old) else []:
+                out.append(("add", f"{n[1]}  {n[0]}"))
+        if not out:
+            out.append(("m", "ничего не изменилось"))
+        return out
+
+    def _emu_journal_render(self):
+        j = self.emu_journal
+        j.configure(state="normal")
+        j.delete("1.0", "end")
+        st = icons.store()
+        if not self._emu_steps:
+            j.insert("end", "Пока пусто — примени валюту, и здесь будет видно, что она добавила, убрала "
+                            "или перекатила.", "m")
+        for i, step in enumerate(self._emu_steps):
+            icon, label = step[0], step[1]
+            diff = step[2] if len(step) > 2 else []
+            tag = f"s{i}"
+            start = j.index("end-1c")
+            img = st.get(icon, 18) if st and icon else None
+            if img is not None:
+                j.image_create("end", image=img, padx=2)
+            j.insert("end", f" {i + 1}. {label}\n", ("step", tag))
+            for kind, text in diff:
+                mark = {"add": "+ ", "del": "− ", "chg": "~ ", "m": "  "}[kind]
+                j.insert("end", "    ", tag)
+                j.insert("end", mark + text + "\n", (kind, tag))
+            j.tag_bind(tag, "<Button-1>", lambda e, k=i: self.emu_rewind(k + 1))
+            j.tag_bind(tag, "<Enter>", lambda e, t=tag: j.tag_configure(t, background="#2a2116"))
+            j.tag_bind(tag, "<Leave>", lambda e, t=tag: j.tag_configure(t, background=""))
+        j.see("end")
+        j.configure(state="disabled")
 
     def emu_rewind(self, n_steps: int):
         """Откатиться к состоянию после шага n (1 — после первого действия)."""
