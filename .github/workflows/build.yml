@@ -4,9 +4,19 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Тег уже созданного релиза, к которому приложить сборку (например v0.22.0). Пусто — только артефакт."
+        required: false
+        default: ""
 
 permissions:
   contents: write
+
+env:
+  PYTHONUTF8: "1"                # консоль Windows в cp1252 — без этого падают print() с русским текстом
+  PYTHONIOENCODING: "utf-8"
+  TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
   windows:
@@ -52,14 +62,14 @@ jobs:
           Copy-Item data/ru/*.json "$r/data/ru/"
           Copy-Item -Recurse goals, examples $r/
           Copy-Item "docs/Как пользоваться.txt" $r/
-          Compress-Archive -Path $r -DestinationPath "PoECraftHelper-${{ github.ref_name }}-win64.zip"
+          Compress-Archive -Path $r -DestinationPath "PoECraftHelper-${{ env.TAG }}-win64.zip"
 
       - name: Установщик (Inno Setup)
         continue-on-error: true      # если установщик не собрался, архив всё равно попадёт в релиз
         shell: pwsh
         run: |
           if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) { choco install innosetup -y --no-progress }
-          $v = "${{ github.ref_name }}".TrimStart("v")
+          $v = "${{ env.TAG }}".TrimStart("v")
           if ($v -notmatch '^\d') { $v = "0.0.0-dev" }
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyVer=$v" installer.iss
 
@@ -71,9 +81,10 @@ jobs:
             PoECraftHelper-Setup-*.exe
 
       - name: Релиз
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(env.TAG, 'v')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.TAG }}
           fail_on_unmatched_files: false
           files: |
             PoECraftHelper-*-win64.zip
