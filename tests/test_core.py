@@ -280,3 +280,54 @@ def test_i18n_phrases():
     finally:
         i18n.set_lang("ru")
     assert i18n.t("Готово") == "Готово"
+
+
+def test_330_gwennen_twice_corrupt_item_tier():
+    from poecraft.emulator import CraftError, Emulator
+    from poecraft.parser import parse_item
+    from poecraft.pool import ModPool
+    data = GameData()
+    belt = data.bases["Stygian Vise"]
+    em = Emulator(data, ModPool(data, belt, 86), seed=5)
+    em.apply("alchemy")
+    h = len(em.history)
+    em.apply("gwennen", a="exalt", b="annul")
+    assert len(em.history) == h + 1                      # одно действие — один шаг журнала
+    assert em.spent.get("Astragali") == 1 and "Exalted Orb" not in em.spent
+    assert em.log[-1].startswith("Гвеннен")
+    # повторное осквернение
+    try:
+        em.apply("corrupt_twice", source="altar")
+        assert False, "алтарь на неосквернённом предмете"
+    except CraftError:
+        pass
+    em.apply("vaal")
+    em.apply("corrupt_twice", source="altar")
+    assert em.state["twice"] and em.state["corrupted"]
+    try:
+        em.apply("corrupt_twice", source="altar")
+        assert False
+    except CraftError:
+        pass
+    em.apply("corrupt_twice", source="djinn")          # Djinn-Touched можно и на дважды осквернённый
+    # не больше двух Vaal-имплицитов
+    for _ in range(40):
+        em.apply("corrupt_twice", source="djinn")
+    assert sum(n.startswith("Vaal-имплицит") for n in em.state["notes"]) <= 2
+    # Lapidary Lens иногда уничтожает предмет
+    em2 = Emulator(data, ModPool(data, belt, 86), seed=1)
+    em2.apply("alchemy"); em2.apply("vaal")
+    destroyed = 0
+    snap = em2.snapshot()
+    for _ in range(300):
+        em2.restore(snap, copy=True)
+        em2.apply("corrupt_twice", source="lens")
+        destroyed += bool(em2.state.get("destroyed"))
+    assert 30 < destroyed < 100
+    try:
+        em2.apply("chaos")
+    except CraftError:
+        pass
+    it = parse_item("Item Class: Belts\nRarity: Rare\nX\nStygian Vise\n--------\nItem Tier: 4\n--------\n"
+                    "Item Level: 84\n--------\nTwice Corrupted")
+    assert it.item_tier == 4 and it.twice_corrupted

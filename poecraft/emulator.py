@@ -235,6 +235,10 @@ class Emulator:
         fn = getattr(self, "do_" + action, None)
         if not fn:
             raise CraftError(f"Неизвестное действие: {action}")
+        if self.state.get("destroyed"):
+            raise CraftError("Предмет уничтожен — отмени шаг (↶) или возьми новый.")
+        if action == "corrupt_twice":
+            return fn(**kw)
         if self.state.get("corrupted") and action not in self.CORRUPTED_OK:
             raise CraftError("Предмет осквернён — на него действуют только Tainted-валюта и верстак.")
         if action.startswith("tainted") and not self.state.get("corrupted"):
@@ -741,29 +745,95 @@ class Emulator:
         t = self.rng.choices([c[0] for c in cands], weights=[c[1] for c in cands])[0]
         return f"Vaal-имплицит: {t}"
 
+    def _add_vaal_implicit(self, notes: list):
+        """3.30: если Vaal-имплицитов уже два — новый заменяет один из них."""
+        have = [i for i, n in enumerate(notes) if n.startswith("Vaal-имплицит")]
+        if len(have) >= 2:
+            del notes[self.rng.choice(have)]
+        notes.append(self._vaal_implicit())
+
     def do_vaal(self):
         """Vaal Orb: 1/4 — ничего, 1/4 — Vaal-имплицит, 1/4 — перекат в редкий, 1/4 — сокеты (тут не меняем)."""
         if self.state.get("corrupted"):
             raise CraftError("Предмет уже осквернён.")
         self._begin("Vaal Orb")
         self.state["corrupted"] = True
+        self._vaal_outcome("Vaal")
+
+    # 3.30: второе осквернение. Источники и цена; шансы исходов GGG не публиковала —
+    # берём исходы Vaal Orb, у Lapidary Lens добавлен риск уничтожить предмет (оценка).
+    TWICE = {
+        "altar": ("Altar of Corruption", None, 0.0),
+        "lens": ("Lapidary Lens", "Lapidary Lens", 0.2),
+        "djinn": ("Djinn-Touched Vaal Orb", "Djinn-Touched Vaal Orb", 0.0),
+    }
+
+    def do_corrupt_twice(self, source: str = "djinn"):
+        name, currency, destroy = self.TWICE.get(source, self.TWICE["djinn"])
+        if not self.state.get("corrupted") and source != "djinn":
+            raise CraftError(f"{name}: нужен уже осквернённый предмет (сначала Vaal Orb).")
+        if self.state.get("twice") and source != "djinn":
+            raise CraftError("Предмет уже дважды осквернён.")
+        self._begin(currency)
+        self.state["corrupted"] = self.state["twice"] = True
+        if destroy and self.rng.random() < destroy:
+            self.state["destroyed"] = True
+            self.state.setdefault("notes", []).append(f"{name}: предмет уничтожен")
+            self.log.append(f"{name}: предмет уничтожен ✗")
+            return
+        self._vaal_outcome(name)
+
+    def _vaal_outcome(self, label: str):
         r = self.rng.randrange(4)
         notes = self.state.setdefault("notes", [])
         if r == 1:
-            notes.append(self._vaal_implicit())
-            self.log.append("Vaal: новый имплицит")
+            self._add_vaal_implicit(notes)
+            self.log.append(f"{label}: новый имплицит")
         elif r == 2 and self.rarity in ("Magic", "Rare"):
             keep = [m for m in self.mods if m.fractured]
             self.rarity = "Rare"
             self.mods = keep
             self._fill("Rare", max(self._count("Rare"), len(keep)))
-            notes.append("Vaal: предмет перекатился в редкий")
-            self.log.append("Vaal: перекат в редкий")
+            notes.append(f"{label}: предмет перекатился в редкий")
+            self.log.append(f"{label}: перекат в редкий")
         elif r == 3:
-            notes.append("Vaal: изменились сокеты/связи")
-            self.log.append("Vaal: сокеты")
+            notes.append(f"{label}: изменились сокеты/связи")
+            self.log.append(f"{label}: сокеты")
         else:
-            self.log.append("Vaal: без изменений")
+            self.log.append(f"{label}: без изменений")
+
+    # ------------------------------------------------------------ 3.30: Гвеннен «попытать удачу»
+    GWENNEN_OPTIONS = [
+        ("chaos", "перекатить все моды"),
+        ("exalt", "добавить случайный мод"),
+        ("annul", "снять случайный мод"),
+        ("divine", "перекатить значения"),
+        ("tainted_divine", "сдвинуть тиры ±1"),
+    ]
+
+    def do_gwennen(self, a: str = "exalt", b: str = "annul"):
+        """Редкий предмет, 1 Astragali: из пары крафтов монетка Гвеннен выбирает один (50/50).
+        Сами варианты GGG показывает в игре (3 пары на выбор) — тут пара задаётся вручную."""
+        if self.rarity != "Rare":
+            raise CraftError("Гвеннен работает только с редким предметом.")
+        pick = self.rng.choice([a, b])
+        fn = getattr(self, "do_" + pick, None)
+        if not fn:
+            raise CraftError(f"Неизвестный вариант: {pick}")
+        hist = len(self.history)
+        self._begin("Astragali")
+        spent_after_begin = dict(self.spent)
+        try:
+            fn()
+        except CraftError as e:
+            self.log.append(f"Гвеннен: монетка → «{self._gw_label(pick)}», но {e}")
+        del self.history[hist + 1:]                 # внутренний шаг — часть одного действия Гвеннен
+        self.spent = spent_after_begin
+        if self.log and not self.log[-1].startswith("Гвеннен"):
+            self.log[-1] = f"Гвеннен → {self._gw_label(pick)}: {self.log[-1]}"
+
+    def _gw_label(self, key):
+        return dict(self.GWENNEN_OPTIONS).get(key, key)
 
     def do_tainted_chaos(self):
         if self.rarity != "Rare":

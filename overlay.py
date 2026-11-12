@@ -674,11 +674,14 @@ class Overlay:
         hb, hf = RARITY.get(item.rarity, (BG2, GOLD))
         name = item.name if item.name and item.name != base else base
         sub = [base] if name != base else []
-        sub += [f"ilvl {item.ilvl}", {"Normal": "обычный", "Magic": "магический", "Rare": "редкий",
+        tier = getattr(item, "item_tier", None)
+        sub += [f"ilvl {item.ilvl}" + (f" · T{tier}" if tier else ""), {"Normal": "обычный", "Magic": "магический", "Rare": "редкий",
                                       "Unique": "уникальный"}.get(item.rarity, item.rarity)]
         if item.influences:
             sub.append(", ".join(item.influences))
-        if item.corrupted:
+        if getattr(item, "twice_corrupted", False):
+            sub.append("дважды осквернён")
+        elif item.corrupted:
             sub.append("осквернён")
         self._paint_head(hb, hf, GOLD_LINE if item.rarity == "Rare" else LINE)
         self._paint_art(hb)

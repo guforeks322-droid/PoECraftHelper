@@ -839,12 +839,12 @@ class MainWindow(tk.Toplevel):
                                  ("inf", "Crusader", "Влияние"), ("eld", "Exarch", "Eldritch"),
                                  ("hv", "Wild Crystallised Lifeforce", "Harvest"), ("veil", "Veiled Chaos Orb", "Veiled"),
                                  ("bench", "", "Верстак"), ("beast", "", "Звери"), ("vaal", "Vaal Orb", "Vaal"),
-                                 ("qual", "Prismatic Catalyst", "Качество")):
+                                 ("gw", "", "Гвеннен"), ("qual", "Prismatic Catalyst", "Качество")):
             t = tk.Label(tabs, text=" " + label, bg=BG, fg=MUTED, font=(FONT, 8), compound="left", padx=2, pady=4,
                          cursor="hand2", anchor="w")
             n = len(self._emu_tabs)
-            t.grid(row=n // 5, column=n % 5, sticky="we")
-            tabs.columnconfigure(n % 5, weight=1, uniform="tabs")
+            t.grid(row=n // 4, column=n % 4, sticky="we")
+            tabs.columnconfigure(n % 4, weight=1, uniform="tabs")
             t.configure(anchor="center")
             t.bind("<Button-1>", lambda e, k=key: self._emu_tab(k))
             t.bind("<Enter>", lambda e, w=t, k=key: k != self._emu_cur and w.configure(fg=FG))
@@ -862,6 +862,7 @@ class MainWindow(tk.Toplevel):
         self._page_bench(self._emu_pages["bench"])
         self._page_beast(self._emu_pages["beast"])
         self._page_vaal(self._emu_pages["vaal"])
+        self._page_gwennen(self._emu_pages["gw"])
         self._page_qual(self._emu_pages["qual"])
         self._emu_tab(self.settings.get("emu_tab", "ess"))
 
@@ -1358,6 +1359,40 @@ class MainWindow(tk.Toplevel):
                 ("Tainted Divine Teardrop", "tainted_divine", "T. Teardrop", "Тир каждого мода ±1"))):
             self._tile(g, name, label, lambda a=act: self.emu_pick(a), tip=tip).grid(row=0, column=i, sticky="we", padx=2)
             g.columnconfigure(i, weight=1, uniform="vg")
+        self._cap_small(p, "3.30: второе осквернение (Twice Corrupted)")
+        g2 = tk.Frame(p, bg=BG1)
+        g2.pack(fill="x", pady=4)
+        for i, (src, name, label, tip) in enumerate((
+                ("altar", "", "Алтарь", "Altar of Corruption (Храм): второе осквернение уже осквернённого предмета"),
+                ("lens", "Lapidary Lens", "Lapidary Lens", "Второе осквернение; может уничтожить предмет"),
+                ("djinn", "Djinn-Touched Vaal Orb", "Djinn Vaal",
+                 "Djinn-Touched Vaal Orb: дважды оскверняет, работает и на дважды осквернённом"))):
+            self._tile(g2, name, label, lambda s=src: self.emu_pick("corrupt_twice", source=s), tip=tip).grid(
+                row=0, column=i, sticky="we", padx=2)
+            g2.columnconfigure(i, weight=1, uniform="vt")
+        self._note(p, "Если Vaal-имплицитов уже два, новый заменяет один из них. Точные шансы исходов GGG не "
+                      "публиковала: тут как у Vaal Orb, у Lapidary Lens риск уничтожить предмет ≈20% (оценка).").pack(
+            fill="x", pady=(4, 0))
+
+    def _page_gwennen(self, p):
+        from poecraft.emulator import Emulator as _E
+        self._note(p, "3.30: Гвеннен за 1 Astragali предлагает на редкий предмет три пары крафтов. Выбираешь пару — "
+                      "монетка применяет один из двух (50/50). Выбери пару как в игре и кидай.").pack(fill="x")
+        opts = [lab for _, lab in _E.GWENNEN_OPTIONS]
+        self._gw_keys = {lab: k for k, lab in _E.GWENNEN_OPTIONS}
+        r = tk.Frame(p, bg=BG1)
+        r.pack(fill="x", pady=6)
+        self.gw_a = tk.StringVar(value=opts[1])
+        self.gw_b = tk.StringVar(value=opts[2])
+        for i, (cap, var) in enumerate((("вариант 1", self.gw_a), ("вариант 2", self.gw_b))):
+            tk.Label(r, text=cap, bg=BG1, fg=MUTED, font=(FONT, 9)).grid(row=i, column=0, sticky="w", padx=(0, 6), pady=2)
+            cb = ttk.Combobox(r, textvariable=var, values=opts, state="readonly", style="D.TCombobox", width=24)
+            cb.grid(row=i, column=1, sticky="we", pady=2)
+            popdown_on_top(cb)
+        r.columnconfigure(1, weight=1)
+        self._act(p, "🪙 Подбросить монетку",
+                  lambda: self.emu_pick("gwennen", a=self._gw_keys[self.gw_a.get()],
+                                        b=self._gw_keys[self.gw_b.get()])).pack(anchor="w", pady=4)
 
     def _page_qual(self, p):
         self._note(p, "Катализаторы (кольца, амулеты, пояса): качество до 20% усиливает моды своего тега и "
@@ -1678,6 +1713,7 @@ class MainWindow(tk.Toplevel):
         "beast_suffix": ("", "Farric Lynx Alpha"), "beast_split": ("", "Fenumal Plagued Arachnid: Split"),
         "beast_influence": ("", "Craicic Maw"), "imprint": ("", "Отпечаток (Craicic Chimeral)"),
         "imprint_restore": ("", "Восстановить отпечаток"),
+        "gwennen": ("", "Гвеннен"),
     }
 
     def _step_of(self, action, kw):
@@ -1697,6 +1733,14 @@ class MainWindow(tk.Toplevel):
             return "Awakener's Orb", f"Awakener's Orb (+{kw.get('other')})"
         if action == "catalyst":
             return kw["name"], kw["name"]
+        if action == "corrupt_twice":
+            from poecraft.emulator import Emulator as _E
+            nm = _E.TWICE.get(kw.get("source"), _E.TWICE["djinn"])[0]
+            return (nm if kw.get("source") != "altar" else ""), nm
+        if action == "gwennen":
+            from poecraft.emulator import Emulator as _E
+            lab = dict(_E.GWENNEN_OPTIONS)
+            return "", f"Гвеннен: {lab.get(kw.get('a'))} / {lab.get(kw.get('b'))}"
         if action == "beast_aspect":
             return "", f"Aspect of the {kw['aspect']}"
         icon, label = self.STEP_ICONS.get(action, ("", action))
@@ -1715,6 +1759,7 @@ class MainWindow(tk.Toplevel):
         return {"rarity": em.rarity, "mods": mods, "impl": impl, "infl": list(em.influences),
                 "state": {"quality": st.get("quality", 0), "catalyst": st.get("catalyst"),
                           "corrupted": st.get("corrupted"), "split": st.get("split"),
+                          "twice": st.get("twice"), "destroyed": st.get("destroyed"),
                           "imprint": bool(st.get("imprint")), "notes": list(st.get("notes", []))}}
 
     @staticmethod
@@ -1731,8 +1776,12 @@ class MainWindow(tk.Toplevel):
         if (sa.get("quality"), sa.get("catalyst")) != (sb.get("quality"), sb.get("catalyst")):
             out.append(("chg", f"качество {sa.get('quality', 0)}% → {sb.get('quality', 0)}%"
                         + (f" ({sb['catalyst'].replace(' Catalyst', '')})" if sb.get("catalyst") else "")))
-        if sb.get("corrupted") and not sa.get("corrupted"):
-            out.append(("del", "предмет осквернён"))
+        if sb.get("destroyed") and not sa.get("destroyed"):
+            out.append(("m", "✗ предмет уничтожен"))
+        elif sb.get("twice") and not sa.get("twice"):
+            out.append(("m", "предмет дважды осквернён"))
+        elif sb.get("corrupted") and not sa.get("corrupted"):
+            out.append(("m", "предмет осквернён"))
         if sb.get("split") and not sa.get("split"):
             out.append(("m", "Split"))
         if sb.get("imprint") != sa.get("imprint"):

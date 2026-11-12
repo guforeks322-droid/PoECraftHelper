@@ -496,6 +496,32 @@ EN2 = {
     "Значение у верстака ниже, чем у топ-тиров. Если нужен высокий тир — сначала Exalt.":
         "Bench values are lower than top tiers. If you need a high tier, Exalt first.",
     "кэш": "cache", "Все классы": "All classes",
+    # ---------------------------------------------------------------- 3.30
+    "Гвеннен": "Gwennen", "Уничтожен": "Destroyed", "Дважды осквернён": "Twice corrupted",
+    "дважды осквернён": "twice corrupted", "Алтарь": "Altar",
+    "3.30: второе осквернение (Twice Corrupted)": "3.30: second corruption (Twice Corrupted)",
+    "Altar of Corruption (Храм): второе осквернение уже осквернённого предмета":
+        "Altar of Corruption (Temple): corrupts an already corrupted item a second time",
+    "Второе осквернение; может уничтожить предмет": "Second corruption; may destroy the item",
+    "Djinn-Touched Vaal Orb: дважды оскверняет, работает и на дважды осквернённом":
+        "Djinn-Touched Vaal Orb: twice corrupts, works on twice corrupted items too",
+    "Если Vaal-имплицитов уже два, новый заменяет один из них. Точные шансы исходов GGG не публиковала: тут как у "
+    "Vaal Orb, у Lapidary Lens риск уничтожить предмет ≈20% (оценка).":
+        "With two Vaal implicits already, a new one replaces one of them. GGG hasn't published the exact odds: same "
+        "as Vaal Orb here, Lapidary Lens has a ≈20% risk to destroy the item (estimate).",
+    "3.30: Гвеннен за 1 Astragali предлагает на редкий предмет три пары крафтов. Выбираешь пару — монетка применяет "
+    "один из двух (50/50). Выбери пару как в игре и кидай.":
+        "3.30: for 1 Astragali Gwennen offers three pairs of crafts on a rare item. Pick a pair — the coin applies one "
+        "of the two (50/50). Set the pair as offered in game and flip.",
+    "вариант 1": "option 1", "вариант 2": "option 2", "🪙 Подбросить монетку": "🪙 Flip the coin",
+    "перекатить все моды": "reroll all mods", "добавить случайный мод": "add a random mod",
+    "снять случайный мод": "remove a random mod", "перекатить значения": "reroll values",
+    "сдвинуть тиры ±1": "shift tiers ±1", "Гвеннен работает только с редким предметом.": "Gwennen works on rare items only.",
+    "нужен уже осквернённый предмет (сначала Vaal Orb).": "needs an already corrupted item (Vaal Orb first).",
+    "Предмет уже дважды осквернён.": "The item is already twice corrupted.", "предмет уничтожен": "item destroyed",
+    "Предмет уничтожен — отмени шаг (↶) или возьми новый.": "The item is destroyed — undo (↶) or take a new one.",
+    "новый имплицит": "new implicit", "без изменений": "no change", "перекат в редкий": "reroll to rare",
+    "но": "but", "✗ предмет уничтожен": "✗ item destroyed", "предмет дважды осквернён": "item twice corrupted",
     "Создатель": "Shaper", "Древний": "Elder", "Крестоносец": "Crusader", "Избавительница": "Redeemer",
     "Охотник": "Hunter", "Вождь": "Warlord",
 }

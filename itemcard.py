@@ -154,7 +154,11 @@ class ItemCard(tk.Frame):
             flags.append(("Split", MUTED))
         if st_.get("imprint"):
             flags.append(("есть отпечаток", MUTED))
-        if st_.get("corrupted"):
+        if st_.get("destroyed"):
+            flags.append(("Уничтожен", "#ff5050"))
+        elif st_.get("twice"):
+            flags.append(("Дважды осквернён", "#d24a4a"))
+        elif st_.get("corrupted"):
             flags.append(("Осквернён", "#d24a4a"))
         if flags:
             fr = tk.Frame(head, bg=head_bg)

@@ -19,6 +19,12 @@ LABELS = {
 RARITY_RU = {"Обычный": "Normal", "Магический": "Magic", "Редкий": "Rare", "Уникальный": "Unique",
              "Обычная": "Normal", "Магическая": "Magic", "Редкая": "Rare", "Уникальная": "Unique"}
 CORRUPTED = ("Corrupted", "Осквернено", "Осквернён", "Осквернен")
+TWICE_CORRUPTED = ("Twice Corrupted", "Дважды осквернено", "Дважды осквернён", "Дважды осквернен")
+# 3.30: тир предмета (2–5) на магических и редких дропах. Точная строка в игре ещё не видна —
+# ловим с запасом: «Item Tier: 5», «Item Tier 5», «Tier 5 Item», русские варианты.
+ITEM_TIER_RE = re.compile(
+    r"^(?:Item Tier|Тир предмета|Уровень предмета \(тир\))\s*:?\s*(\d)\b|^(?:Tier|Тир)\s*(\d)\s+(?:Item|предмет)",
+    re.I)
 MIRRORED = ("Mirrored", "Отражено", "Зеркальная копия")
 INFLUENCES = ["Shaper", "Elder", "Crusader", "Redeemer", "Hunter", "Warlord"]
 INFLUENCES_RU = {"Создател": "Shaper", "Древн": "Elder", "Крестонос": "Crusader",
@@ -49,6 +55,8 @@ class ParsedItem:
     base_name: str = ""
     ilvl: int = 0
     corrupted: bool = False
+    twice_corrupted: bool = False
+    item_tier: int | None = None      # 3.30: тир дропа 2–5
     mirrored: bool = False
     influences: list[str] = field(default_factory=list)
     mods: list[ParsedMod] = field(default_factory=list)
@@ -89,6 +97,10 @@ def parse_item(text: str) -> ParsedItem:
 
     head = [l.strip() for l in sections[0] if l.strip()]
     for i, line in enumerate(head):
+        mt = ITEM_TIER_RE.match(line)
+        if mt:
+            item.item_tier = int(mt.group(1) or mt.group(2))
+            continue
         v = _label(line, "item_class")
         if v is not None:
             item.item_class = v
@@ -116,6 +128,11 @@ def parse_item(text: str) -> ParsedItem:
                     pass
             elif line in CORRUPTED:
                 item.corrupted = True
+            elif line in TWICE_CORRUPTED:
+                item.corrupted = item.twice_corrupted = True
+            elif ITEM_TIER_RE.match(line):
+                mt = ITEM_TIER_RE.match(line)
+                item.item_tier = int(mt.group(1) or mt.group(2))
             elif line in MIRRORED:
                 item.mirrored = True
             elif line.endswith(" Item") and line.split()[0] in INFLUENCES:
