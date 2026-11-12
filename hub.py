@@ -57,6 +57,7 @@ class HubWindow(tk.Toplevel):
         self.lift()
         self._update = None
         self.after(2500, self._check_updates)
+        self.after(3500, self._check_data)
         from poecraft import icons
         st = icons.store()
         if st:
@@ -185,6 +186,67 @@ class HubWindow(tk.Toplevel):
             self.show_library()
 
     # ------------------------------------------------------------ обновления (тихая проверка при запуске)
+    def _check_data(self):
+        """Тихо сравнить версию данных модов с RePoE: после патча игры предложить обновить в один клик."""
+        if not self.app.settings.get("check_updates", True):
+            return
+        import threading
+        from poecraft import data as gd
+
+        def run():
+            try:
+                remote = gd.remote_version()
+            except Exception:  # noqa: BLE001 — нет сети: молча
+                return
+            local = gd.local_version()
+            if remote and remote != local:
+                try:
+                    self.after(0, lambda: self._got_data(remote))
+                except (tk.TclError, RuntimeError):
+                    pass
+        threading.Thread(target=run, daemon=True).start()
+
+    def _got_data(self, remote):
+        self._data_new = {"version": remote, "state": "new"}
+        if getattr(self, "mode", "home") == "home":
+            self.show_home()
+
+    def _data_banner(self, parent):
+        d = self._data_new
+        b = tk.Frame(parent, bg="#1f2a1a", highlightthickness=1, highlightbackground="#4c6b2f", cursor="hand2")
+        b.pack(fill="x", padx=4, pady=(4, 6))
+        txt = {"new": f"⟳  Вышли новые данные игры ({d['version']}) — нажми, чтобы обновить моды и базы",
+               "busy": "⟳  Скачиваю данные игры (≈50 МБ)…",
+               "done": "✓  Данные обновлены — перезапусти программу, чтобы они применились",
+               "error": f"✗  Не удалось скачать данные: {d.get('error', '')}"}[d["state"]]
+        l = tk.Label(b, text=txt, bg="#1f2a1a", fg=GOOD if d["state"] != "error" else WARN, font=(FONT, 10),
+                     anchor="w", padx=10, pady=6, cursor="hand2", wraplength=660, justify="left")
+        l.pack(fill="x")
+        for w in (b, l):
+            w.bind("<Button-1>", lambda e: self._update_data())
+
+    def _update_data(self):
+        d = getattr(self, "_data_new", None)
+        if not d or d["state"] in ("busy", "done"):
+            return
+        import threading
+        from poecraft import data as gd
+        d["state"] = "busy"
+        self.show_home()
+        ru = bool(self.app.settings.get("download_ru", True))
+
+        def run():
+            try:
+                gd.download(gd.DATA_DIR, verbose=False, russian=ru)
+                d["state"] = "done"
+            except Exception as e:  # noqa: BLE001
+                d["state"], d["error"] = "error", str(e)
+            try:
+                self.after(0, lambda: getattr(self, "mode", "") == "home" and self.show_home())
+            except (tk.TclError, RuntimeError):
+                pass
+        threading.Thread(target=run, daemon=True).start()
+
     def _check_updates(self):
         repo = self.app.settings.get("update_repo", "")
         if not repo or not self.app.settings.get("check_updates", True):
@@ -225,6 +287,8 @@ class HubWindow(tk.Toplevel):
         p.pack(fill="both", expand=True, padx=16, pady=8)
         if getattr(self, "_update", None):
             self._update_banner(p)
+        if getattr(self, "_data_new", None):
+            self._data_banner(p)
 
         tiles = tk.Frame(p, bg=BG)
         tiles.pack(fill="x", pady=(4, 0))

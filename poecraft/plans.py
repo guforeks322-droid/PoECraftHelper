@@ -36,7 +36,19 @@ ACTIONS = [  # (действие, подпись, параметр)
     ("eldritch_chaos", "Eldritch Chaos", None), ("eldritch_exalt", "Eldritch Exalt", None),
     ("eldritch_annul", "Eldritch Annul", None), ("veiled_chaos", "Veiled Chaos", None),
     ("beast_prefix", "Зверь: +префикс −суффикс", None), ("beast_suffix", "Зверь: +суффикс −префикс", None),
+    ("gwennen", "Гвеннен (монетка)", "gwennen"),
 ]
+
+
+def gwennen_pairs() -> dict[str, tuple[str, str]]:
+    """Подпись пары → (a, b) для шага «Гвеннен»."""
+    opts = Emulator.GWENNEN_OPTIONS
+    lab = dict(opts)
+    out = {}
+    for i, (a, _) in enumerate(opts):
+        for b, _ in opts[i + 1:]:
+            out[f"{lab[a]} / {lab[b]}"] = (a, b)
+    return out
 ACTION_LABEL = {a: l for a, l, _ in ACTIONS}
 ACTION_PARAM = {a: p for a, _, p in ACTIONS}
 
@@ -80,6 +92,9 @@ def step_text(s: dict, targets=()) -> str:
         a += f": {kw['name']}"
     if kw.get("label"):
         a += f" ({kw['label']})"
+    if s.get("do") == "gwennen" and kw.get("a"):
+        lab = dict(Emulator.GWENNEN_OPTIONS)
+        a += f": {lab.get(kw['a'], kw['a'])} / {lab.get(kw.get('b'), kw.get('b'))}"
     parts = []
     if s.get("if"):
         parts.append(f"если {cond_label(s['if'])}")

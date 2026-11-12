@@ -75,6 +75,8 @@ class Overlay:
         self.save_settings = save_settings
         i18n.set_lang(self.settings.get("ui_lang", "ru"))
         self.root = tk.Tk()
+        from poecraft import crashlog
+        crashlog.install(self.root)
         self.root.title("PoE Craft Helper")
         try:   # иконка окон и панели задач (общая для всех окон программы)
             self._icon_img = tk.PhotoImage(file=resource("assets/icon64.png"))

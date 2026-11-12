@@ -1996,6 +1996,8 @@ class MainWindow(tk.Toplevel):
         elif p == "harvest":
             from poecraft.harvest import HARVEST
             vals = list(HARVEST)
+        elif p == "gwennen":
+            vals = [i18n.t(x) for x in plans.gwennen_pairs()]
         self.pl_par_box.configure(values=vals, state="readonly" if vals else "disabled")
         if self.pl_par.get() not in vals:
             self.pl_par.set(vals[0] if vals and p != "fossils" else "")
@@ -2054,6 +2056,11 @@ class MainWindow(tk.Toplevel):
             kw["name"] = par
         elif p == "harvest":
             kw["label"] = par
+        elif p == "gwennen":
+            pairs = {i18n.t(k): v for k, v in plans.gwennen_pairs().items()}
+            if par not in pairs:
+                raise ValueError("Выбери пару крафтов Гвеннен.")
+            kw["a"], kw["b"] = pairs[par]
         if kw:
             s["kw"] = kw
         c_if, c_until = self._plan_cond(self.pl_if.get()), self._plan_cond(self.pl_until.get())
@@ -2105,6 +2112,9 @@ class MainWindow(tk.Toplevel):
             self.pl_par.set(kw["bench_text"])
         elif kw.get("name") or kw.get("label"):
             self.pl_par.set(kw.get("name") or kw.get("label"))
+        elif s.get("do") == "gwennen" and kw.get("a"):
+            back = {v: k for k, v in plans.gwennen_pairs().items()}
+            self.pl_par.set(i18n.t(back.get((kw["a"], kw.get("b")), "")))
         self.pl_if.set(i18n.t(plans.cond_label(s.get("if"))))
         self.pl_until.set(i18n.t(plans.cond_label(s.get("until"))))
         self.pl_max.set(str(s.get("max", 300)))

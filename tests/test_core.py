@@ -331,3 +331,18 @@ def test_330_gwennen_twice_corrupt_item_tier():
     it = parse_item("Item Class: Belts\nRarity: Rare\nX\nStygian Vise\n--------\nItem Tier: 4\n--------\n"
                     "Item Level: 84\n--------\nTwice Corrupted")
     assert it.item_tier == 4 and it.twice_corrupted
+
+
+def test_plan_gwennen_step():
+    from poecraft import plans
+    from poecraft.emulator import Emulator
+    from poecraft.pool import ModPool
+    data = GameData()
+    belt = data.bases["Stygian Vise"]
+    em = Emulator(data, ModPool(data, belt, 86), seed=2)
+    em.apply("alchemy")
+    a, b = plans.gwennen_pairs()["добавить случайный мод / снять случайный мод"]
+    steps = [{"do": "gwennen", "kw": {"a": a, "b": b}}]
+    assert "Гвеннен" in plans.step_text(steps[0])
+    r = plans.PlanRunner(data, em, []).run(steps)
+    assert r["error"] is None and em.spent.get("Astragali") == 1

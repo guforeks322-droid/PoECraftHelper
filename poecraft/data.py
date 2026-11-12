@@ -51,6 +51,19 @@ def download(data_dir: Path = DATA_DIR, verbose: bool = True, russian: bool = Tr
     return version
 
 
+def local_version(data_dir: Path = DATA_DIR) -> str:
+    try:
+        return (data_dir / "version.txt").read_text().strip()
+    except OSError:
+        return ""
+
+
+def remote_version(timeout: float = 10) -> str:
+    """Версия свежих данных RePoE на сайте (после патча игры меняется)."""
+    with urllib.request.urlopen(f"{BASE_URL}/version.txt", timeout=timeout) as r:
+        return r.read().decode().strip()
+
+
 @dataclass(frozen=True)
 class ModDef:
     id: str
