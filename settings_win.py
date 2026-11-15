@@ -45,6 +45,7 @@ HOTKEY_ACTIONS = [
     ("workshop", "Показать / спрятать мастерскую"),
     ("hub", "Показать / спрятать стартовое окно (хаб)"),
     ("to_emulator", "Предмет под курсором → в эмулятор"),
+    ("timeless", "Прайс-чек таймлесса под курсором"),
     ("settings", "Открыть настройки"),
 ]
 
@@ -145,12 +146,12 @@ class SettingsWindow(tk.Toplevel):
         # содержимое справа
         right = tk.Frame(body, bg=BG)
         right.pack(side="left", fill="both", expand=True)
-        self.content = tk.Frame(right, bg=BG)
-        self.content.pack(fill="both", expand=True, padx=16, pady=12)
-
+        # подвал пакуем ДО содержимого: иначе длинная страница выталкивает «Сохранить» за край окна
         foot = tk.Frame(right, bg=BG)
         foot.pack(fill="x", side="bottom")
         tk.Frame(right, bg=LINE, height=1).pack(fill="x", side="bottom")
+        self.content = tk.Frame(right, bg=BG)
+        self.content.pack(fill="both", expand=True, padx=16, pady=12)
         self.foot_status = tk.Label(foot, text="", bg=BG, fg=MUTED, font=(FONT, 9), anchor="w")
         self.foot_status.pack(side="left", padx=16)
         for text, cmd in (("ОТМЕНА", self.cancel), ("СОХРАНИТЬ", self.save)):
@@ -253,6 +254,9 @@ class SettingsWindow(tk.Toplevel):
         self._h(p, "Буфер обмена")
         self._note(p, "Предмет в игре копируется сочетанием Ctrl+Alt+C — его задаёт сама игра. "
                       "Программа ловит копирование автоматически.")
+        self._h(p, "Таймлесс джевелы")
+        self._check(p, "Прайс-чек таймлессов: окно с ценами сида при копировании джевела",
+                    "timeless_check", True)
         self._h(p, "Предмет → эмулятор")
         self._check(p, "По горячей клавише самой копировать предмет под курсором (одно нажатие Ctrl+Alt+C)",
                     "emu_send_copy", True)
@@ -275,6 +279,12 @@ class SettingsWindow(tk.Toplevel):
         if prev and prev != key:
             self._paint_hotkey(prev, self._hk(prev))
         self._paint_hotkey(key, self._hk(key))
+        # пока ждём сочетание, глобальные горячие клавиши выключены: иначе уже занятое
+        # сочетание (Ctrl+Shift+O и т.п.) перехватывает Windows, и в поле ничего не приходит
+        try:
+            self.app.hk.stop()
+        except Exception:
+            pass
         self.focus_force()
         self.bind("<KeyPress>", self._on_key)
 
@@ -305,6 +315,7 @@ class SettingsWindow(tk.Toplevel):
         self.draft["hotkeys"][key] = combo
         self._capture_key = None
         self.unbind("<KeyPress>")
+        self.app.apply_hotkeys()           # вернуть сохранённые горячие клавиши (новые — после «Сохранить»)
         self._paint_hotkey(key, combo)
         self.hk_note.configure(text="Не забудь «Сохранить».", fg=MUTED)
         return "break"
@@ -524,6 +535,8 @@ class SettingsWindow(tk.Toplevel):
         self.destroy()
 
     def cancel(self):
+        if self._capture_key:
+            self.app.apply_hotkeys()
         # откатываем «живые» изменения прозрачности
         self.app.root.attributes("-alpha", self.app.settings.get("alpha", 0.92))
         w = getattr(self.app, "main_win", None)

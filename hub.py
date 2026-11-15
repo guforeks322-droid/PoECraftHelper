@@ -48,8 +48,8 @@ class HubWindow(tk.Toplevel):
         self.geometry(geo)
         self.minsize(660, 540)
         self.protocol("WM_DELETE_WINDOW", self.app.quit)
-        self.bind("<Map>", lambda e: e.widget is self and self.after(10, lambda: frameless(self)), add="+")
-        self.after(300, lambda: frameless(self))
+        self.bind("<Map>", lambda e: e.widget is self and self.after(10, self._chrome), add="+")
+        self.after(300, self._chrome)
         self._pending_delete = None
         self._style()
         self._build()
@@ -98,7 +98,7 @@ class HubWindow(tk.Toplevel):
             w.bind("<B1-Motion>", self._drag_move)
             w.bind("<ButtonRelease-1>", lambda e: self._remember_geo())
         self._head_btn(head, "✕", self.app.quit, WARN, "Выход")
-        self._head_btn(head, "—", self.hide, GOLD, "Свернуть (оверлей продолжит работать)")
+        self._head_btn(head, "—", self.minimize, GOLD, "Свернуть на панель задач (оверлей продолжит работать)")
         self._head_btn(head, "⚙", lambda: self.app.open_settings(), GOLD, "Настройки")
 
         self.page = tk.Frame(self, bg=BG)
@@ -149,6 +149,17 @@ class HubWindow(tk.Toplevel):
         self.deiconify()
         self.lift()
         self.refresh()
+
+    def _chrome(self):
+        """Без системной рамки, но со своей кнопкой на панели задач."""
+        from poecraft import winmove
+        frameless(self)
+        winmove.show_in_taskbar(self)
+
+    def minimize(self):
+        """«—»: свернуть на панель задач. Вернуть — кликом по значку или горячей клавишей хаба."""
+        self._remember_geo()
+        self.iconify()
 
     def hide(self):
         self._remember_geo()

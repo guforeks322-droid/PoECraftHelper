@@ -54,6 +54,7 @@ Copy an item in game and the overlay shows which mods are missing, the **next st
 ### Buy or craft
 - **"⌕ buy base"** and **"⌕ finished item"** open the official trade site with the base or the wanted mods filled in. Compare the craft cost with the price of a finished item.
 - **"⌕ this on trade"** in the emulator searches for an item with the same mods.
+- **Timeless jewel price check:** copy a Glorious Vanity, Lethal Pride, Brutal Restraint, Militant Faith, Elegant Hubris or Heroic Tragedy and a window opens at your cursor with trade prices for that seed (any conqueror or only yours), the minimum and the median. Buttons open the trade search and the Vilsol calculator with that seed. Works with the Russian client too.
 
 ### Crafts and sharing
 - A craft goal is a set of wanted mods, each with the worst tier you accept. 13 starter crafts are included.
@@ -82,6 +83,7 @@ Copy an item in game and the overlay shows which mods are missing, the **next st
 |---|---|
 | `Ctrl+Alt+C` (game) | copy an item → advice in the overlay |
 | `Ctrl+Shift+E` | item under cursor → emulator |
+| `Ctrl+Shift+J` | price check the timeless jewel under cursor |
 | `Ctrl+Shift+O` | show/hide the overlay |
 | `Ctrl+Shift+M` | show/hide the workshop |
 | `Ctrl+Shift+H` | show/hide the hub |
@@ -92,7 +94,7 @@ Copy an item in game and the overlay shows which mods are missing, the **next st
 
 The app **reads the clipboard** and does nothing in the game by itself.
 
-The one exception is `Ctrl+Shift+E`: it sends exactly one copy keypress per press of yours, and you can turn it off in the settings.
+The exceptions are `Ctrl+Shift+E` and `Ctrl+Shift+J`: each sends exactly one copy keypress per press of yours (you can turn it off for `Ctrl+Shift+E` in the settings). For the timeless jewel price check the app runs the search on the official trade site (pathofexile.com) itself, the same request the site makes in your browser.
 
 The app doesn't read game memory and doesn't touch game files.
 

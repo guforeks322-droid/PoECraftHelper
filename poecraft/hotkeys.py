@@ -10,7 +10,7 @@ import sys
 import threading
 
 DEFAULT_HOTKEYS = {"overlay": "Ctrl+Shift+O", "workshop": "Ctrl+Shift+M", "hub": "Ctrl+Shift+H",
-                   "to_emulator": "Ctrl+Shift+E"}
+                   "to_emulator": "Ctrl+Shift+E", "timeless": "Ctrl+Shift+J"}
 
 MOD = {"ctrl": 0x0002, "alt": 0x0001, "shift": 0x0004, "win": 0x0008}
 MOD_NOREPEAT = 0x4000
@@ -53,18 +53,35 @@ def normalize(combo: str) -> str:
     return "+".join(mods + [key])
 
 
+VK_NAME = {}
+for _n, _c in VK.items():
+    VK_NAME.setdefault(_c, _n)          # код клавиши → имя («A», «F5», «PageUp»), «`» раньше «~»
+MOD_VK = {0x10, 0x11, 0x12, 0x5B, 0x5C, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5}
+MOD_KEYSYMS = ("Control_L", "Control_R", "Alt_L", "Alt_R", "Shift_L", "Shift_R", "Super_L", "Super_R",
+               "Win_L", "Win_R", "ISO_Level3_Shift")
+
+
 def from_tk_event(e) -> str | None:
-    """Комбинация из события tkinter (для поля «нажми сочетание»)."""
-    key = e.keysym
-    if key in ("Control_L", "Control_R", "Alt_L", "Alt_R", "Shift_L", "Shift_R", "Super_L", "Super_R"):
+    """Комбинация из события tkinter (для поля «нажми сочетание»).
+
+    В Windows клавишу берём по коду (e.keycode — это VK), а не по символу: на русской
+    раскладке Shift+J приходит как «Cyrillic_O», и сочетание раньше не распознавалось."""
+    if e.keysym in MOD_KEYSYMS:
         return None
-    key = {"space": "Space", "Escape": "Esc", "Prior": "PageUp", "Next": "PageDown", "grave": "`"}.get(key, key)
-    if len(key) == 1:
-        key = key.upper()
+    key = None
+    if sys.platform == "win32":
+        code = getattr(e, "keycode", 0) or 0
+        if code in MOD_VK:
+            return None
+        key = VK_NAME.get(code)
+    if key is None:
+        key = {"space": "Space", "Escape": "Esc", "Prior": "PageUp", "Next": "PageDown", "grave": "`"}.get(e.keysym, e.keysym)
+        if len(key) == 1:
+            key = key.upper()
     mods = []
     if e.state & 0x0004:
         mods.append("Ctrl")
-    if e.state & 0x20000 or e.state & 0x0008:   # Alt на Windows / X11
+    if e.state & 0x20000 or (sys.platform != "win32" and e.state & 0x0008):   # Alt на Windows / X11
         mods.append("Alt")
     if e.state & 0x0001:
         mods.append("Shift")

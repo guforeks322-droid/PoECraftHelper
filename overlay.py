@@ -7,6 +7,29 @@
 
 from __future__ import annotations
 
+
+def _early_fault_log():
+    """Падения до запуска окна и внутри библиотек (Tk, DLL) — в logs/fault.log рядом с exe."""
+    import faulthandler
+    import os
+    import sys as _s
+    if hasattr(_s, "_pch_fault_log"):     # overlay ещё раз импортируют hub/mainwin — не открываем лог дважды
+        return _s._pch_fault_log
+    base = os.path.dirname(_s.executable if getattr(_s, "frozen", False) else os.path.abspath(__file__))
+    try:
+        os.makedirs(os.path.join(base, "logs"), exist_ok=True)
+        f = open(os.path.join(base, "logs", "fault.log"), "a", encoding="utf-8")
+        f.write("\n--- запуск %s ---\n" % __import__("time").strftime("%Y-%m-%d %H:%M:%S"))
+        f.flush()
+        faulthandler.enable(f)
+        _s._pch_fault_log = f
+        return f
+    except Exception:
+        return None
+
+
+_FAULT_LOG = _early_fault_log()
+
 import json
 import os
 import queue
@@ -106,6 +129,11 @@ class Overlay:
         self._load_goals()
         self.set_status("Загружаю данные модов…")
         threading.Thread(target=self._init_data, daemon=True).start()
+        try:   # словарь строк таймлессов с трейда (нужен для русского клиента)
+            from poecraft import timeless
+            timeless.warm_up()
+        except Exception:
+            pass
 
         self.goals_dir = GOALS_DIR
         self.hub = None
@@ -312,8 +340,8 @@ class Overlay:
             self.set_status(f"Не удалось открыть хаб: {e}")
 
     def toggle_hub(self):
-        if self.hub is not None and self.hub.winfo_exists() and self.hub.state() != "withdrawn":
-            self.hub.hide()
+        if self.hub is not None and self.hub.winfo_exists() and self.hub.state() == "normal":
+            self.hub.minimize()
         else:
             self.open_hub()
 
@@ -440,6 +468,8 @@ class Overlay:
             self.open_settings()
         elif action == "hub":
             self.toggle_hub()
+        elif action == "timeless":
+            self.timeless_under_cursor()
         elif action == "to_emulator":
             self.item_to_emulator(copy=self.settings.get("emu_send_copy", True))
 
@@ -604,13 +634,85 @@ class Overlay:
             text = None
         if text and text != self.last_clip:
             self.last_clip = text
-            if looks_like_item(text):
+            jewel = self._timeless(text)
+            if jewel:
+                self.last_text = text
+                self.show_timeless(jewel)
+            elif looks_like_item(text):
                 if self.settings.get("auto_show", True) and self.root.state() == "withdrawn":
                     self.root.deiconify()
                     self.root.attributes("-topmost", True)
                 self.last_text = text
                 self._analyze(text)
         self.root.after(300, self._poll_clipboard)
+
+    # ------------------------------------------------------------ таймлесс джевелы
+    def _timeless(self, text):
+        if not self.settings.get("timeless_check", True):
+            return None
+        try:
+            from poecraft import timeless
+            return timeless.parse(text)
+        except Exception:
+            return None
+
+    def show_timeless(self, jewel):
+        """Прайс-чек таймлесса: отдельное окно у курсора, карточка крафта не трогается."""
+        try:
+            from timeless_win import TimelessWindow
+            win = getattr(self, "timeless_win", None)
+            if win is None or not win.winfo_exists():
+                self.timeless_win = win = TimelessWindow(self)
+            win.check(jewel)
+        except Exception as e:
+            traceback.print_exc()
+            self.set_status(f"Прайс-чек таймлесса не открылся: {e}")
+
+    def timeless_under_cursor(self):
+        """Горячая клавиша: копируем предмет под курсором и проверяем ИМЕННО его.
+
+        Раньше сбрасывали last_clip и ждали опроса буфера — опрос успевал увидеть старый
+        текст раньше, чем игра положит новый, и снова открывался прошлый джевел. Теперь
+        буфер очищаем, жмём Ctrl+Alt+C и ждём новый текст; не пришёл — курсор не на предмете,
+        тогда возвращаем прежний буфер и ничего не показываем."""
+        from poecraft.hotkeys import send_copy
+        if getattr(self, "_emu_wait", False):
+            return
+        try:
+            before = self.root.clipboard_get()
+        except tk.TclError:
+            before = ""
+        self._emu_wait = True           # опрос буфера на это время молчит
+        self.root.clipboard_clear()
+        self.root.clipboard_append("")
+        self.root.update_idletasks()
+        send_copy(advanced=True)
+        self._wait_timeless(before, time.time())
+
+    def _wait_timeless(self, before, t0):
+        try:
+            now = self.root.clipboard_get()
+        except tk.TclError:
+            now = ""
+        if now:
+            self._emu_wait = False
+            self.last_clip = now        # опрос не обработает этот же текст второй раз
+            jewel = self._timeless(now)
+            if jewel:
+                self.last_text = now
+                self.show_timeless(jewel)
+            elif looks_like_item(now):
+                self.set_status("Под курсором не таймлесс джевел.")
+            return
+        if time.time() - t0 < 1.0:
+            return self.root.after(30, lambda: self._wait_timeless(before, t0))
+        # игра ничего не скопировала (курсор не на предмете) — вернуть пользователю его буфер
+        self._emu_wait = False
+        if before:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(before)
+            self.last_clip = before
+        self.set_status("Наведи курсор на таймлесс джевел в игре.")
 
     def _analyze(self, text):
         goal = self.current_goal()
@@ -820,7 +922,14 @@ class Overlay:
 
 def main():
     sys.setswitchinterval(0.002)      # фоновые расчёты чаще отдают время окну
-    Overlay().run()
+    try:
+        app = Overlay()
+    except BaseException:
+        if _FAULT_LOG:
+            _FAULT_LOG.write(traceback.format_exc())
+            _FAULT_LOG.flush()
+        raise
+    app.run()
 
 
 if __name__ == "__main__":

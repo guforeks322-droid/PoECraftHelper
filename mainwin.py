@@ -134,6 +134,7 @@ class MainWindow(tk.Toplevel):
         self._build()
         # снимаем рамку, когда окно реально появилось на экране (и при каждом показе)
         self.bind("<Map>", lambda e: e.widget is self and self.after(10, self._frameless), add="+")
+        self.after(350, self._taskbar)
         self.after(300, self._frameless)
         threading.Thread(target=self._refresh_prices, daemon=True).start()
         self.after(100, self._poll)
@@ -2467,7 +2468,13 @@ class MainWindow(tk.Toplevel):
         except Exception:
             pass
 
+    def _taskbar(self):
+        """Своя кнопка на панели задач — иначе свёрнутую мастерскую не найти."""
+        from poecraft import winmove
+        winmove.show_in_taskbar(self)
+
     def minimize(self):
+        self._taskbar()
         self.iconify()
 
     def _on_configure(self, e):

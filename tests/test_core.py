@@ -346,3 +346,75 @@ def test_plan_gwennen_step():
     assert "Гвеннен" in plans.step_text(steps[0])
     r = plans.PlanRunner(data, em, []).run(steps)
     assert r["error"] is None and em.spent.get("Astragali") == 1
+
+
+def test_timeless_parse_and_query():
+    from poecraft import timeless as tl
+    gv = ("Item Class: Jewels\nRarity: Unique\nGlorious Vanity\nTimeless Jewel\n--------\n"
+          "Limited to: 1 Historic\nRadius: Large\n--------\n"
+          "Bathed in the blood of 8000 sacrificed in the name of Doryani\n"
+          "Passives in radius are Conquered by the Vaal\nHistoric")
+    j = tl.parse(gv)
+    assert (j.jewel, j.seed, j.conqueror, j.corrupted) == ("Glorious Vanity", 8000, "Doryani", False)
+    mf = ("Item Class: Jewels\nRarity: Unique\nMilitant Faith\nTimeless Jewel\n--------\n"
+          "{ Unique Modifier }\nCarved to glorify 6253(2000-10000) new faithful converted by High Templar Avarius\n"
+          "{ Unique Modifier }\n4% increased Totem Damage per 10 Devotion\n--------\nCorrupted")
+    j = tl.parse(mf)
+    assert (j.jewel, j.seed, j.conqueror, j.corrupted) == ("Militant Faith", 6253, "Avarius", True)
+    assert j.extra == ["4% increased Totem Damage per 10 Devotion"]
+    eh = tl.parse("Rarity: Unique\nElegant Hubris\nTimeless Jewel\n--------\nCommissioned 45060 coins to commemorate Cadiro")
+    assert (eh.jewel, eh.seed, eh.conqueror, eh.vilsol_id) == ("Elegant Hubris", 45060, "Cadiro", 5)
+    assert "jewel=5" in eh.vilsol_url() and "seed=45060" in eh.vilsol_url() and "mode=seed" in eh.vilsol_url()
+    assert tl.parse("Item Class: Belts\nRarity: Rare\nHavoc Clasp\nStygian Vise") is None
+    q = tl.build_query(eh, any_conqueror=True)
+    ids = [f["id"] for f in q["query"]["stats"][0]["filters"]]
+    assert ids == [f"explicit.pseudo_timeless_jewel_{c}" for c in ("cadiro", "victario", "caspiro", "chitus")]
+    assert tl.build_query(eh, any_conqueror=False)["query"]["stats"][0]["filters"] == [
+        {"id": "explicit.pseudo_timeless_jewel_cadiro", "value": {"min": 45060, "max": 45060}}]
+
+
+def test_timeless_russian_from_trade_dictionary():
+    """Русская строка из словаря трейда превращается в регулярку — язык клиента не важен."""
+    from poecraft import timeless as tl
+    rx = tl._entry_regex("Омыт кровью # жертв во имя Дориани")
+    m = rx.search("Омыт кровью 8000(2000-10000) жертв во имя Дориани")
+    assert m and m.group(1) == "8000"
+    L = tl.Listing
+    ls = [L(1, "divine", "a", True, "", "Doryani", False), L(50, "chaos", "b", True, "", "Xibaqua", False),
+          L(2, "divine", "c", False, "", "Ahuana", False)]
+    assert tl.summary(ls, 100) == (50, 100)
+
+
+def test_hotkey_capture_layout_independent(monkeypatch):
+    """Поле «нажми сочетание»: клавиша по VK-коду, русская раскладка и NumLock не мешают."""
+    from types import SimpleNamespace as E
+    from poecraft import hotkeys as hk
+    monkeypatch.setattr(hk.sys, "platform", "win32")
+    # Shift+J на русской раскладке: keysym кириллический, keycode = VK 'J'
+    assert hk.from_tk_event(E(keysym="Cyrillic_O", keycode=0x4A, state=0x0001 | 0x0004)) == "Ctrl+Shift+J"
+    # NumLock (0x0008) — не Alt
+    assert hk.from_tk_event(E(keysym="Cyrillic_ve", keycode=0x44, state=0x0004 | 0x0001 | 0x0008)) == "Ctrl+Shift+D"
+    assert hk.from_tk_event(E(keysym="d", keycode=0x44, state=0x0004 | 0x20000)) == "Ctrl+Alt+D"
+    assert hk.from_tk_event(E(keysym="F5", keycode=0x74, state=0)) == "F5"
+    assert hk.from_tk_event(E(keysym="Shift_L", keycode=0x10, state=0)) is None
+    assert hk.from_tk_event(E(keysym="Control_L", keycode=0xA2, state=0x0004)) is None
+
+
+def test_timeless_russian_client_without_dictionary():
+    """Русский клиент без словаря трейда: тип по «завоёваны <фракция>», сид — число перед ней."""
+    from poecraft import timeless as tl
+    ru = ("Класс предмета: Самоцветы\nРедкость: Уникальный\nБлистательное тщеславие\nВневременной самоцвет\n"
+          "--------\nМаксимум: 1 исторический\nРадиус: Большой\n--------\n"
+          "Омыт в крови 6777 жертв во имя Мазкотля\nПассивные умения в радиусе завоеваны ваал\nИсторический")
+    j = tl.parse(ru)
+    assert (j.jewel, j.seed) == ("Glorious Vanity", 6777) and not j.conqueror_known
+    # имя неизвестно → ищем по всем завоевателям серии, даже если просили «только свой»
+    assert len(tl.build_query(j, any_conqueror=False)["query"]["stats"][0]["filters"]) == 4
+    assert "conqueror=Xibaqua" in j.vilsol_url() and "mode=seed" in j.vilsol_url()
+    j2 = tl.parse(ru.replace("Мазкотля", "Ахваны").replace("завоеваны", "завоёваны"))
+    assert j2.conqueror == "Ahuana" and j2.conqueror_known
+    adv = ru.replace("6777 жертв", "6777(100-8000) жертв")
+    assert tl.parse(adv).seed == 6777
+    lp = ("Редкость: Уникальный\nСмертельная гордость\nВневременной самоцвет\n--------\n"
+          "Командовал 9999 воинами под началом Каома\nПассивные умения в радиусе завоёваны каруи")
+    assert tl.parse(lp).jewel == "Lethal Pride"
